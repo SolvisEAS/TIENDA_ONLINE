@@ -6,7 +6,7 @@ con copia de seguridad diaria.
 Cómo queda armado en el servidor:
 
 ```
-Visitante ──HTTPS──> Nginx (puertos 80/443) ──> Tienda Node.js (127.0.0.1:3000) ──> data/ y uploads/
+Visitante ──HTTPS──> Nginx (puertos 80/443) ──> Tienda Node.js (127.0.0.1:3010) ──> data/ y uploads/
 ```
 
 En los comandos reemplazá:
@@ -17,6 +17,10 @@ En los comandos reemplazá:
 
 Los comandos con fondo gris se copian y pegan **en el servidor** (después de conectarte por SSH),
 salvo donde dice **"en tu PC"**.
+
+> **Servidor compartido con otros sistemas** (como el de Solvis: crm, odoo, panel, wa, clínica):
+> NO ejecutar `apt upgrade`, NO reinstalar Nginx ni Node.js (sirve Node 22.13 o superior),
+> NO tocar el firewall ni borrar sitios de Nginx. La tienda usa el puerto **3010** (el 3000 ya está ocupado).
 
 ---
 
@@ -169,7 +173,7 @@ systemctl status tienda --no-pager
 Tiene que decir **active (running)**. Prueba rápida dentro del servidor:
 
 ```bash
-curl -s http://127.0.0.1:3000/api/store | head -c 200; echo
+curl -s http://127.0.0.1:3010/api/store | head -c 200; echo
 ```
 
 ---
@@ -179,7 +183,6 @@ curl -s http://127.0.0.1:3000/api/store | head -c 200; echo
 ```bash
 cp /opt/tienda-online/deploy/nginx-tienda.conf /etc/nginx/sites-available/tienda
 ln -s /etc/nginx/sites-available/tienda /etc/nginx/sites-enabled/tienda
-rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 ```
 

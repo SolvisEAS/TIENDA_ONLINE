@@ -17,7 +17,7 @@ Group=tienda
 WorkingDirectory=/opt/tienda-online
 ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.js
 Environment=NODE_ENV=production
-Environment=PORT=3000
+Environment=PORT=3010
 # Sólo escucha dentro del servidor: al público se llega a través de Nginx (HTTPS)
 Environment=HOST=127.0.0.1
 Restart=always
