@@ -22,11 +22,11 @@ npm start
 - **Si el usuario pierde el acceso**, se resetea desde la terminal, en la PC (o servidor) donde corre la tienda:
 
   ```bash
-  npm run resetear-clave -- todoherramientas
+  npm run resetear-clave -- lucassanabria
   ```
 
   Genera una contraseña nueva al azar, la muestra en pantalla y cierra las sesiones abiertas de ese usuario.
-  Para elegir vos la contraseña: `npm run resetear-clave -- todoherramientas MiClaveNueva123`.
+  Para elegir vos la contraseña: `npm run resetear-clave -- lucassanabria MiClaveNueva123`.
   Sin datos (`npm run resetear-clave`) muestra la lista de usuarios. No crea usuarios nuevos
   (sólo el primero, si la base de datos está vacía).
 

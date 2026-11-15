@@ -156,7 +156,7 @@ Tu usuario y contraseña del panel siguen siendo los mismos que en tu PC.
 **Si arrancás vacía**, creá el usuario del panel (te muestra la contraseña generada):
 
 ```bash
-cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas
+cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- lucassanabria
 ```
 
 ---
@@ -254,7 +254,7 @@ Hace una copia de seguridad, descarga lo nuevo de GitHub, instala y reinicia la 
 **Resetear la contraseña del panel:**
 
 ```bash
-cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas
+cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- lucassanabria
 ```
 
 **Ver si la tienda está funcionando / ver errores:**

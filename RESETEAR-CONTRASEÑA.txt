@@ -2,7 +2,7 @@
   TODO HERRAMIENTAS - CÓMO RESETEAR LA CONTRASEÑA DEL PANEL
 ==============================================================
 
-Usuario del panel: todoherramientas
+Usuario del panel: lucassanabria
 (Por seguridad, este archivo NO tiene la contraseña.)
 
 Al resetear:
@@ -24,7 +24,7 @@ Al resetear:
 
 3. Ejecutar:
 
-   npm run resetear-clave -- todoherramientas
+   npm run resetear-clave -- lucassanabria
 
 
 --------------------------------------------------------------
@@ -43,7 +43,7 @@ Reemplazar IP_DEL_SERVIDOR por la IP del servidor
 
 2. Resetear (con el usuario "tienda", para no romper permisos):
 
-   cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas
+   cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- lucassanabria
 
 3. Salir:
 
@@ -52,7 +52,7 @@ Reemplazar IP_DEL_SERVIDOR por la IP del servidor
 
 ATAJO (todo en un solo comando, desde tu PC):
 
-   ssh root@IP_DEL_SERVIDOR "cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas"
+   ssh root@IP_DEL_SERVIDOR "cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- lucassanabria"
 
 
 --------------------------------------------------------------
@@ -65,14 +65,14 @@ Ver la lista de usuarios del panel:
 
 Elegir vos la contraseña (mínimo 8 caracteres):
 
-   npm run resetear-clave -- todoherramientas MiClaveNueva123
+   npm run resetear-clave -- lucassanabria MiClaveNueva123
 
    OJO: así la contraseña queda guardada en el historial de la
    terminal. Es más seguro dejar que se genere sola.
 
 Sin usar npm (funciona desde cualquier carpeta):
 
-   sudo -u tienda node /opt/tienda-online/resetear-clave.js todoherramientas
+   sudo -u tienda node /opt/tienda-online/resetear-clave.js lucassanabria
 
 
 --------------------------------------------------------------
@@ -83,16 +83,16 @@ Sin usar npm (funciona desde cualquier carpeta):
   -> Ejecutarlo con el mismo usuario de Linux con el que corre
      la tienda. Ejemplo, si la tienda corre con el usuario "tienda":
 
-   cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas
+   cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- lucassanabria
 
 * "npm: command not found" al usar el ATAJO de un solo comando
   (pasa cuando Node se instaló con nvm):
 
-   ssh root@IP_DEL_SERVIDOR "bash -lc 'cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas'"
+   ssh root@IP_DEL_SERVIDOR "bash -lc 'cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- lucassanabria'"
 
 * Si la tienda corre dentro de Docker:
 
-   docker exec -it nombre-del-contenedor npm run resetear-clave -- todoherramientas
+   docker exec -it nombre-del-contenedor npm run resetear-clave -- lucassanabria
 
 * El ingreso al panel se bloquea 10 minutos después de 5 intentos
   fallidos seguidos. Si pasó eso, esperar 10 minutos o reiniciar
