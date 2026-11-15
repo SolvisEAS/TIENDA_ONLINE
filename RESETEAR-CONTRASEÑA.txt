@@ -31,31 +31,28 @@ Al resetear:
   B) EN EL SERVIDOR (cuando la tienda esté subida, por SSH)
 --------------------------------------------------------------
 
-Reemplazar:
-  usuario   -> el usuario de Linux del servidor
-  servidor  -> la IP o el dominio del servidor
-  /home/usuario/tienda -> la carpeta real donde esté la tienda
+Servidor UpCloud (instalado según deploy/GUIA-UPCLOUD.md):
+  carpeta de la tienda: /opt/tienda-online
+  la tienda corre con el usuario de Linux "tienda"
+Reemplazar IP_DEL_SERVIDOR por la IP del servidor
+(o usar todoherramientas.solvis.com.py).
 
 1. Conectarse:
 
-   ssh usuario@servidor
+   ssh root@IP_DEL_SERVIDOR
 
-2. Entrar a la carpeta de la tienda:
+2. Resetear (con el usuario "tienda", para no romper permisos):
 
-   cd /home/usuario/tienda
+   cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas
 
-3. Resetear:
-
-   npm run resetear-clave -- todoherramientas
-
-4. Salir:
+3. Salir:
 
    exit
 
 
 ATAJO (todo en un solo comando, desde tu PC):
 
-   ssh usuario@servidor "cd /home/usuario/tienda && npm run resetear-clave -- todoherramientas"
+   ssh root@IP_DEL_SERVIDOR "cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas"
 
 
 --------------------------------------------------------------
@@ -75,7 +72,7 @@ Elegir vos la contraseña (mínimo 8 caracteres):
 
 Sin usar npm (funciona desde cualquier carpeta):
 
-   node /home/usuario/tienda/resetear-clave.js todoherramientas
+   sudo -u tienda node /opt/tienda-online/resetear-clave.js todoherramientas
 
 
 --------------------------------------------------------------
@@ -86,12 +83,12 @@ Sin usar npm (funciona desde cualquier carpeta):
   -> Ejecutarlo con el mismo usuario de Linux con el que corre
      la tienda. Ejemplo, si la tienda corre con el usuario "tienda":
 
-   sudo -u tienda npm run resetear-clave -- todoherramientas
+   cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas
 
 * "npm: command not found" al usar el ATAJO de un solo comando
   (pasa cuando Node se instaló con nvm):
 
-   ssh usuario@servidor "bash -lc 'cd /home/usuario/tienda && npm run resetear-clave -- todoherramientas'"
+   ssh root@IP_DEL_SERVIDOR "bash -lc 'cd /opt/tienda-online && sudo -u tienda npm run resetear-clave -- todoherramientas'"
 
 * Si la tienda corre dentro de Docker:
 

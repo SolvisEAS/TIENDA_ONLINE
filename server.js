@@ -6,10 +6,16 @@ const os = require('os');
 const { db, getSettings, setSetting, hashPassword, verifyPassword, validateNewUser, SETTING_KEYS } = require('./db');
 
 const PORT = Number(process.env.PORT) || 3000;
+// En el servidor se usa HOST=127.0.0.1: sólo Nginx (en la misma máquina) puede llegar a la tienda.
+const HOST = process.env.HOST || '0.0.0.0';
 const UPLOADS = path.join(__dirname, 'uploads');
 fs.mkdirSync(UPLOADS, { recursive: true });
 
 const app = express();
+// Detrás de Nginx: tomar la IP real del visitante y saber si entró por HTTPS
+// (sólo se confía en el proxy de la misma máquina).
+app.set('trust proxy', 'loopback');
+app.disable('x-powered-by');
 app.use(express.json({ limit: '40mb' })); // varias fotos por producto
 
 // Si el código del servidor cambió después de iniciarlo, el panel avisa que hay que reiniciar
@@ -415,7 +421,7 @@ app.post('/api/orders', (req, res) => {
 /* ------------------------------ API admin ------------------------------ */
 
 app.post('/api/admin/login', (req, res) => {
-  const ip = req.socket.remoteAddress || '';
+  const ip = req.ip || req.socket.remoteAddress || '';
   const fails = failedLogins.get(ip);
   if (fails && fails.until > Date.now()) {
     const min = Math.ceil((fails.until - Date.now()) / 60000);
@@ -432,7 +438,8 @@ app.post('/api/admin/login', (req, res) => {
   failedLogins.delete(ip);
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, { userId: user.id, version: user.session_version, exp: Date.now() + SESSION_MS });
-  res.cookie('admin_token', token, { httpOnly: true, sameSite: 'lax', maxAge: SESSION_MS });
+  // secure: con HTTPS la cookie de sesión nunca viaja sin cifrar
+  res.cookie('admin_token', token, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: SESSION_MS });
   res.json({ ok: true });
 });
 
@@ -887,13 +894,15 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, HOST, () => {
   console.log(`\nTienda funcionando:`);
   console.log(`  Tienda:  http://localhost:${PORT}`);
   console.log(`  Panel:   http://localhost:${PORT}/admin`);
-  for (const list of Object.values(os.networkInterfaces())) {
-    for (const net of list || []) {
-      if (net.family === 'IPv4' && !net.internal) console.log(`  Desde el celular (misma red WiFi): http://${net.address}:${PORT}`);
+  if (HOST === '0.0.0.0') {
+    for (const list of Object.values(os.networkInterfaces())) {
+      for (const net of list || []) {
+        if (net.family === 'IPv4' && !net.internal) console.log(`  Desde el celular (misma red WiFi): http://${net.address}:${PORT}`);
+      }
     }
   }
   if (!db.prepare('SELECT 1 FROM users').get()) {

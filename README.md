@@ -67,6 +67,12 @@ Para probar desde el celular, conectalo a la misma red WiFi y abrí la direcció
 - Al confirmar: se registra el pedido, se descuenta el stock y se abre WhatsApp con el
   mensaje ya escrito para el local. El cliente sólo tiene que tocar "Enviar".
 
+## Publicarla en un servidor
+
+La guía paso a paso para UpCloud (Ubuntu + Nginx + HTTPS en `todoherramientas.solvis.com.py`)
+está en [deploy/GUIA-UPCLOUD.md](deploy/GUIA-UPCLOUD.md), junto con el servicio de systemd,
+la configuración de Nginx, la copia de seguridad diaria y el script para actualizar.
+
 ## Dónde quedan los datos
 
 - `data/tienda.db`: base de datos SQLite (productos, pedidos, configuración).
