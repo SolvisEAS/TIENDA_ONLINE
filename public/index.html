@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Todo Herramientas</title>
+  <meta name="description" content="Herramientas manuales, eléctricas e inalámbricas. Hacé tu pedido online y confirmalo por WhatsApp.">
+  <link rel="icon" href="/img/logo.webp">
+  <meta name="theme-color" content="#0d2749">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Krub:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/store.css">
+</head>
+<body>
+  <!-- El encabezado, el pie de página y el carrito los agrega shop.js -->
+  <main class="container">
+    <section id="hero" class="hero" aria-label="Productos destacados"></section>
+
+    <section class="perks">
+      <div class="perk"><span class="perk-icon" data-icon="cart"></span><div><strong>Armá tu pedido online</strong><span>Elegí productos y cantidades</span></div></div>
+      <div class="perk"><span class="perk-icon" data-icon="clock"></span><div><strong>Elegí día y horario</strong><span>Retiro en el local o envío</span></div></div>
+      <div class="perk"><span class="perk-icon" data-icon="chat"></span><div><strong>Confirmá por WhatsApp</strong><span>Te respondemos enseguida</span></div></div>
+    </section>
+
+    <section id="newSection" class="section">
+      <div class="section-head">
+        <h2>Nuevos productos</h2>
+      </div>
+      <a class="section-link" href="#catalogo">Ver todos los productos</a>
+      <div id="newRail" class="rail"></div>
+    </section>
+
+    <section id="catalogo" class="section">
+      <div class="section-head">
+        <h2 id="catalogTitle">Todos los productos</h2>
+      </div>
+      <div class="catalog-tools">
+        <div id="chips" class="chips"></div>
+        <select id="sort" class="sort" aria-label="Ordenar">
+          <option value="new">Más nuevos</option>
+          <option value="price-asc">Menor precio</option>
+          <option value="price-desc">Mayor precio</option>
+          <option value="name">Nombre (A-Z)</option>
+        </select>
+      </div>
+      <p id="resultInfo" class="result-info" hidden></p>
+      <div id="grid" class="grid"><p class="empty">Cargando productos…</p></div>
+    </section>
+  </main>
+
+  <script src="/shop.js"></script>
+  <script>document.querySelectorAll('[data-icon]').forEach((el) => el.insertAdjacentHTML('afterbegin', icon(el.dataset.icon)));</script>
+  <script src="/home.js"></script>
+</body>
+</html>

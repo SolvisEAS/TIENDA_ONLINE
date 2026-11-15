@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Producto · Todo Herramientas</title>
+  <link rel="icon" href="/img/logo.webp">
+  <meta name="theme-color" content="#0d2749">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Krub:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/store.css">
+</head>
+<body>
+  <!-- El encabezado, el pie de página y el carrito los agrega shop.js -->
+  <main class="container">
+    <div id="productPage"><p class="empty">Cargando producto…</p></div>
+
+    <section id="relatedSection" class="section" hidden>
+      <div class="section-head">
+        <h2>Productos relacionados</h2>
+      </div>
+      <a id="relatedMore" class="section-link" href="/">Ver más</a>
+      <div id="relatedRail" class="rail"></div>
+    </section>
+  </main>
+
+  <!-- foto ampliada -->
+  <dialog id="lightbox" class="lightbox" aria-label="Foto ampliada">
+    <button class="lb-close" data-lb-close aria-label="Cerrar">✕</button>
+    <button class="lb-arrow prev" data-lb="-1" aria-label="Foto anterior">‹</button>
+    <img id="lbImg" alt="">
+    <button class="lb-arrow next" data-lb="1" aria-label="Foto siguiente">›</button>
+    <div id="lbCount" class="lb-count"></div>
+  </dialog>
+
+  <script src="/shop.js"></script>
+  <script src="/product.js"></script>
+</body>
+</html>

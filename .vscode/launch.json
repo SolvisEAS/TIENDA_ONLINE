@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Iniciar tienda (se reinicia sola con cada cambio)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.js",
+      "runtimeArgs": ["--watch", "--disable-warning=ExperimentalWarning"],
+      "env": { "PORT": "3000" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Iniciar tienda (puerto 3000)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.js",
+      "runtimeArgs": ["--disable-warning=ExperimentalWarning"],
+      "env": { "PORT": "3000" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Iniciar tienda (elegir puerto)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.js",
+      "runtimeArgs": ["--disable-warning=ExperimentalWarning"],
+      "env": { "PORT": "${input:port}" },
+      "console": "integratedTerminal"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "port",
+      "type": "promptString",
+      "description": "¿En qué puerto querés iniciar la tienda?",
+      "default": "8080"
+    }
+  ]
+}

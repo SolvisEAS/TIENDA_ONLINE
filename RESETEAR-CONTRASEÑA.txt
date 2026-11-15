@@ -1,0 +1,102 @@
+==============================================================
+  TODO HERRAMIENTAS - CÓMO RESETEAR LA CONTRASEÑA DEL PANEL
+==============================================================
+
+Usuario del panel: todoherramientas
+(Por seguridad, este archivo NO tiene la contraseña.)
+
+Al resetear:
+  - Se genera una contraseña nueva al azar y se muestra en pantalla.
+  - Se cierran en el momento las sesiones abiertas de ese usuario.
+  - NO hace falta reiniciar la tienda.
+  - Después, pedile al usuario que la cambie en:
+    Panel > Configuración > Cambiar mi contraseña
+
+
+--------------------------------------------------------------
+  A) EN ESTA PC (mientras la tienda corre en forma local)
+--------------------------------------------------------------
+
+1. Abrir VS Code en la carpeta del proyecto:
+   C:\Users\evero\Documents\SOLVIS EAS\TIENDA_ONLINE
+
+2. Abrir la terminal:  Ctrl + ñ
+
+3. Ejecutar:
+
+   npm run resetear-clave -- todoherramientas
+
+
+--------------------------------------------------------------
+  B) EN EL SERVIDOR (cuando la tienda esté subida, por SSH)
+--------------------------------------------------------------
+
+Reemplazar:
+  usuario   -> el usuario de Linux del servidor
+  servidor  -> la IP o el dominio del servidor
+  /home/usuario/tienda -> la carpeta real donde esté la tienda
+
+1. Conectarse:
+
+   ssh usuario@servidor
+
+2. Entrar a la carpeta de la tienda:
+
+   cd /home/usuario/tienda
+
+3. Resetear:
+
+   npm run resetear-clave -- todoherramientas
+
+4. Salir:
+
+   exit
+
+
+ATAJO (todo en un solo comando, desde tu PC):
+
+   ssh usuario@servidor "cd /home/usuario/tienda && npm run resetear-clave -- todoherramientas"
+
+
+--------------------------------------------------------------
+  OTRAS FORMAS DEL COMANDO
+--------------------------------------------------------------
+
+Ver la lista de usuarios del panel:
+
+   npm run resetear-clave
+
+Elegir vos la contraseña (mínimo 8 caracteres):
+
+   npm run resetear-clave -- todoherramientas MiClaveNueva123
+
+   OJO: así la contraseña queda guardada en el historial de la
+   terminal. Es más seguro dejar que se genere sola.
+
+Sin usar npm (funciona desde cualquier carpeta):
+
+   node /home/usuario/tienda/resetear-clave.js todoherramientas
+
+
+--------------------------------------------------------------
+  SI ALGO FALLA EN EL SERVIDOR
+--------------------------------------------------------------
+
+* Error de permisos al escribir en data/tienda.db
+  -> Ejecutarlo con el mismo usuario de Linux con el que corre
+     la tienda. Ejemplo, si la tienda corre con el usuario "tienda":
+
+   sudo -u tienda npm run resetear-clave -- todoherramientas
+
+* "npm: command not found" al usar el ATAJO de un solo comando
+  (pasa cuando Node se instaló con nvm):
+
+   ssh usuario@servidor "bash -lc 'cd /home/usuario/tienda && npm run resetear-clave -- todoherramientas'"
+
+* Si la tienda corre dentro de Docker:
+
+   docker exec -it nombre-del-contenedor npm run resetear-clave -- todoherramientas
+
+* El ingreso al panel se bloquea 10 minutos después de 5 intentos
+  fallidos seguidos. Si pasó eso, esperar 10 minutos o reiniciar
+  la tienda.

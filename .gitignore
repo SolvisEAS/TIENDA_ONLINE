@@ -1,0 +1,21 @@
+# Dependencias (se instalan con: npm install)
+node_modules/
+
+# Datos de la tienda: NUNCA subir al repositorio.
+# data/ tiene la base de datos con pedidos, nombres, teléfonos y direcciones de clientes,
+# y las contraseñas del panel (cifradas). uploads/ tiene las fotos de los productos.
+# Se crean solas al iniciar la tienda; para pasarlas a otro servidor se copian aparte.
+data/
+uploads/
+
+# Configuración local y secretos
+.env
+.env.*
+.claude/settings.local.json
+
+# Archivos del sistema y registros
+*.log
+npm-debug.log*
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel de administración</title>
+  <link rel="icon" href="/img/logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Krub:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <!-- Ingreso -->
+  <section id="loginView" class="login" hidden>
+    <form id="loginForm" class="form login-card">
+      <img src="/img/logo.webp" alt="Todo Herramientas" class="login-logo" width="140" height="140">
+      <p class="muted" style="text-align:center;margin:-6px 0 4px">Panel de administración</p>
+      <label>Usuario
+        <input type="text" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" autofocus>
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" required autocomplete="current-password">
+      </label>
+      <button class="btn primary block">Ingresar</button>
+    </form>
+  </section>
+
+  <!-- Panel -->
+  <div id="appView" hidden>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div class="brand"><img src="/img/logo.webp" alt="" width="40" height="40"><h1 id="panelTitle">Panel</h1></div>
+        <nav class="tabs" role="tablist">
+          <button class="tab active" data-tab="products">Productos</button>
+          <button class="tab" data-tab="orders">Pedidos <span id="pendingBadge" class="badge" hidden>0</span></button>
+          <button class="tab" data-tab="reports">Reportes</button>
+          <button class="tab" data-tab="settings">Configuración</button>
+        </nav>
+        <div class="top-actions">
+          <span id="whoami" class="whoami"></span>
+          <a class="btn small" href="/" target="_blank" rel="noopener">Ver tienda</a>
+          <button id="logoutBtn" class="btn small">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container admin-main">
+      <!-- Productos -->
+      <section id="tab-products" class="tab-panel">
+        <div id="stockSummary" class="summary"></div>
+        <div class="toolbar">
+          <select id="stockFilter" class="search narrow" aria-label="Filtrar por stock">
+            <option value="">Todos</option>
+            <option value="out">Sin stock</option>
+            <option value="low">Stock bajo (3 o menos)</option>
+            <option value="hidden">Ocultos</option>
+            <option value="featured">Destacados</option>
+          </select>
+          <input id="productSearch" type="search" placeholder="Buscar producto…" class="search">
+          <button id="newProductBtn" class="btn primary">+ Nuevo producto</button>
+        </div>
+        <div id="productList" class="list"></div>
+      </section>
+
+      <!-- Pedidos -->
+      <section id="tab-orders" class="tab-panel" hidden>
+        <div class="toolbar">
+          <select id="orderFilter" class="search">
+            <option value="">Todos los pedidos</option>
+            <option value="pendiente" selected>Pendientes</option>
+            <option value="confirmado">Confirmados</option>
+            <option value="entregado">Entregados</option>
+            <option value="cancelado">Cancelados</option>
+            <option value="rechazado">Rechazados</option>
+          </select>
+          <button id="refreshOrders" class="btn">Actualizar</button>
+        </div>
+        <div id="orderList" class="list"></div>
+      </section>
+
+      <!-- Configuración -->
+      <!-- Reportes -->
+      <section id="tab-reports" class="tab-panel" hidden>
+        <div class="toolbar report-tools">
+          <div class="chips" id="rangeChips">
+            <button class="chip" data-range="today">Hoy</button>
+            <button class="chip" data-range="7d">Últimos 7 días</button>
+            <button class="chip active" data-range="month">Este mes</button>
+            <button class="chip" data-range="prev">Mes anterior</button>
+            <button class="chip" data-range="year">Este año</button>
+          </div>
+          <div class="range-custom">
+            <label>Desde <input type="date" id="rFrom"></label>
+            <label>Hasta <input type="date" id="rTo"></label>
+          </div>
+          <a id="excelBtn" class="btn primary" href="#">Descargar Excel</a>
+        </div>
+        <p class="muted report-note">Las ventas cuentan sólo los pedidos <strong>entregados</strong>, en la fecha en que los marcaste como entregados. Los pedidos por estado cuentan los recibidos en el período.</p>
+
+        <div id="kpis" class="kpis"></div>
+
+        <div class="report-grid">
+          <section class="panel-box wide">
+            <h2 id="chartTitle">Ventas por día</h2>
+            <div id="salesChart" class="chart"></div>
+          </section>
+          <section class="panel-box">
+            <h2>Pedidos por estado</h2>
+            <div id="statusList"></div>
+          </section>
+          <section class="panel-box">
+            <h2>Ventas por categoría</h2>
+            <div id="categoryBars"></div>
+          </section>
+          <section class="panel-box wide">
+            <h2>Productos más vendidos</h2>
+            <div id="topProducts" class="table-wrap"></div>
+          </section>
+          <section class="panel-box wide">
+            <div class="box-head">
+              <h2>Pedidos del período</h2>
+              <div class="box-tools">
+                <select id="rStatus" class="search narrow" aria-label="Filtrar por estado">
+                  <option value="">Todos los estados</option>
+                  <option value="pendiente">Pendientes</option>
+                  <option value="confirmado">Confirmados</option>
+                  <option value="entregado">Entregados</option>
+                  <option value="cancelado">Cancelados</option>
+                  <option value="rechazado">Rechazados</option>
+                </select>
+                <input id="rSearch" type="search" class="search narrow" placeholder="Buscar cliente…">
+              </div>
+            </div>
+            <div id="reportOrders" class="table-wrap"></div>
+          </section>
+          <section class="panel-box wide">
+            <div class="box-head">
+              <h2>Productos y stock</h2>
+              <select id="rStock" class="search narrow" aria-label="Filtrar stock">
+                <option value="">Todos</option>
+                <option value="Stock bajo">Stock bajo</option>
+                <option value="Sin stock">Sin stock</option>
+              </select>
+            </div>
+            <div id="reportStock" class="table-wrap"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab-panel" hidden>
+        <form id="settingsForm" class="form panel">
+          <h2>Datos de la tienda</h2>
+          <label>Nombre de la tienda <input name="store_name" required></label>
+          <div class="row">
+            <label>Moneda <input name="currency" required maxlength="6" placeholder="Gs.">
+              <span class="hint">Se muestra antes del precio: Gs. 280.000</span></label>
+            <label>Dirección del local <input name="address" maxlength="200" placeholder="Opcional"></label>
+          </div>
+          <label>Texto del pie de página <textarea name="footer_text" rows="2" maxlength="400" placeholder="Se muestra debajo del logo, al final de la tienda"></textarea></label>
+          <label>Mensajes del cartel superior <textarea name="announcement" rows="4" placeholder="Un mensaje por línea"></textarea>
+            <span class="hint">Escribí un mensaje por línea; pasan uno detrás de otro de derecha a izquierda. Dejalo vacío para ocultar el cartel.</span></label>
+          <label>Número de WhatsApp que recibe los pedidos
+            <input name="whatsapp" required inputmode="numeric" placeholder="595981123456">
+            <span class="hint">Con código de país y sin el 0 inicial. Ej. Paraguay: 0981 123 456 → 595981123456</span>
+          </label>
+          <fieldset class="seg">
+            <label><input type="checkbox" name="delivery_enabled"> Hago envíos a domicilio</label>
+            <label><input type="checkbox" name="pickup_enabled"> Se puede retirar en el local</label>
+          </fieldset>
+
+          <h2>Horarios de pedidos</h2>
+          <label>Franjas horarias
+            <input name="hours" required placeholder="09:00-13:00, 17:00-21:00">
+            <span class="hint">Separá varias franjas con coma.</span>
+          </label>
+          <div class="row">
+            <label>Cada cuántos minutos hay un turno <input name="slot_minutes" type="number" min="5" max="240" required></label>
+            <label>Pedidos máximos por turno <input name="max_per_slot" type="number" min="0" required>
+              <span class="hint">0 = sin límite</span></label>
+          </div>
+          <div class="row">
+            <label>Anticipación mínima (minutos) <input name="lead_minutes" type="number" min="0" required>
+              <span class="hint">Ej: 60 = no se puede pedir para dentro de menos de 1 hora</span></label>
+            <label>Días hacia adelante que se pueden elegir <input name="days_ahead" type="number" min="1" max="60" required></label>
+          </div>
+          <div class="label">Días cerrados
+            <div id="closedDays" class="days"></div>
+          </div>
+          <button class="btn primary">Guardar configuración</button>
+        </form>
+
+        <form id="deliveryForm" class="form panel" novalidate>
+          <h2>Precios de delivery</h2>
+          <p class="muted" style="margin:0">Las ciudades que cargues acá son las que el cliente puede elegir al pedir con envío a domicilio. El precio se suma al total del pedido.</p>
+          <div class="dl-head"><span>Ciudad</span><span>Precio del delivery</span><span></span></div>
+          <div id="deliveryRows" class="dl-rows"></div>
+          <button type="button" class="btn small" id="addCity">+ Agregar ciudad</button>
+          <div class="dl-row dl-other">
+            <strong>Otros</strong>
+            <input type="number" name="other_price" min="0" step="any" required aria-label="Precio del delivery para Otros">
+            <span class="hint">Cuando la ciudad del cliente no está en la lista, elige "Otros" y la escribe.</span>
+          </div>
+          <button class="btn primary">Guardar precios de delivery</button>
+        </form>
+
+        <form id="passwordForm" class="form panel">
+          <h2>Cambiar mi contraseña</h2>
+          <label>Contraseña actual <input type="password" name="current" required autocomplete="current-password"></label>
+          <div class="row">
+            <label>Nueva contraseña <input type="password" name="next" required minlength="8" autocomplete="new-password">
+              <span class="hint">Mínimo 8 caracteres.</span></label>
+            <label>Repetir nueva contraseña <input type="password" name="repeat" required minlength="8" autocomplete="new-password"></label>
+          </div>
+          <button class="btn">Cambiar contraseña</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- Formulario de producto -->
+  <dialog id="productDialog" class="dialog">
+    <form id="productForm" class="form" method="dialog">
+      <div class="dialog-head">
+        <h2 id="productDialogTitle">Nuevo producto</h2>
+        <button type="button" class="icon-btn" data-dialog-close aria-label="Cerrar">✕</button>
+      </div>
+      <div class="label">Fotos
+        <span class="hint">Hasta 8 fotos. La primera es la principal (la que se ve en el catálogo). Usá las flechas para cambiar el orden.</span>
+        <div id="photoGrid" class="photo-grid"></div>
+      </div>
+      <label>Nombre <input name="name" required maxlength="120"></label>
+      <label>Descripción <textarea name="description" rows="4" maxlength="3000" placeholder="Características, medidas, qué incluye… Se muestra en la página del producto."></textarea></label>
+      <label>Categoría <input name="category" list="categoryList" maxlength="60" placeholder="Ej: Herramientas eléctricas"></label>
+      <datalist id="categoryList"></datalist>
+      <div class="row">
+        <label>Precio de venta <input name="price" type="number" min="0" step="any" required></label>
+        <label>Precio anterior <input name="compare_price" type="number" min="0" step="any" placeholder="Opcional">
+          <span class="hint">Si es mayor al precio de venta, se muestra tachado como oferta.</span></label>
+      </div>
+      <label>Stock (unidades) <input name="stock" type="number" min="0" step="1" required></label>
+      <label class="check"><input type="checkbox" name="active" checked> Visible en la tienda</label>
+      <label class="check"><input type="checkbox" name="featured"> Destacado (aparece en el banner principal)</label>
+      <div class="dialog-foot">
+        <button type="button" class="btn" data-dialog-close>Cancelar</button>
+        <button type="submit" id="saveProductBtn" class="btn primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="restartBar" class="restart-bar" role="alert" hidden>
+    Hay una actualización de la tienda: <strong>reiniciala</strong> para que todo funcione (en VS Code: Shift + F5 y después F5).
+  </div>
+  <div id="offlineBar" class="offline-bar" role="alert" hidden>
+    Sin conexión con la tienda. Revisá que esté encendida y que tengas internet. Se vuelve a intentar sola…
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="/admin/admin.js"></script>
+  <script src="/admin/reports.js"></script>
+</body>
+</html>
