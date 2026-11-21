@@ -19,4 +19,4 @@ echo "4/4 Reiniciando la tienda..."
 systemctl restart tienda
 sleep 2
 systemctl --no-pager --lines=5 status tienda
-echo "Listo. Versión actual: $(git -C "$APP" log -1 --format='%h %s')"
+echo "Listo. Versión actual: $(sudo -u tienda git -C "$APP" log -1 --format='%h %s')"
