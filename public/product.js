@@ -111,15 +111,29 @@ function renderBuyBox() {
   $('#buyBox').innerHTML = html;
 }
 
+// Relacionados calculados por el servidor (nombre, marca, voltaje y comprados juntos).
+// Si no hay suficientes, se completa con la misma categoría y el resto del catálogo.
+let relatedIds = null;
+
+async function loadRelated() {
+  try {
+    relatedIds = await api(`/api/products/${productId}/related`);
+  } catch {
+    relatedIds = [];
+  }
+  renderRelated();
+}
+
 function renderRelated() {
   const p = current();
   if (!p) return;
-  const same = products.filter((x) => x.id !== p.id && p.category && x.category === p.category);
-  const others = products.filter((x) => x.id !== p.id && !same.includes(x));
-  const list = [...same, ...others].slice(0, 8);
+  const smart = (relatedIds || []).map((id) => products.find((x) => x.id === id)).filter(Boolean);
+  const same = products.filter((x) => x.id !== p.id && p.category && x.category === p.category && !smart.includes(x));
+  const others = products.filter((x) => x.id !== p.id && !smart.includes(x) && !same.includes(x));
+  const list = [...smart, ...same, ...others].slice(0, 8);
   $('#relatedSection').hidden = !list.length;
   $('#relatedRail').innerHTML = list.map(card).join('');
-  $('#relatedMore').href = same.length ? `/?cat=${encodeURIComponent(p.category)}` : '/';
+  $('#relatedMore').href = p.category ? `/?cat=${encodeURIComponent(p.category)}` : '/';
 }
 
 /* ---------------- galería ---------------- */
@@ -232,6 +246,7 @@ page = {
     if (!rendered) {
       rendered = true;
       renderProduct();
+      loadRelated();
     } else {
       renderBuyBox();
       renderRelated();

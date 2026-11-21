@@ -63,6 +63,22 @@ const money = (n) => `${shop.currency || ''} ${Number(n).toLocaleString('es-AR',
 const waUrl = (text) => `https://wa.me/${String(shop.whatsapp || '').replace(/\D/g, '')}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 const discount = (p) => (p.compare_price > p.price ? Math.round((1 - p.price / p.compare_price) * 100) : 0);
 const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+// Singular simple (igual que en el servidor): "taladros" -> "taladro", "motores" -> "motor"
+function stem(w) {
+  if (/^\d/.test(w)) return w;
+  if (w.length > 4 && /[rlndzj]es$/.test(w)) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+const words = (s) => norm(s).replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean);
+
+// El producto coincide si contiene todas las palabras buscadas (en singular o plural,
+// y también palabras a medio escribir: "tala" encuentra "taladro")
+function matchesSearch(p, q) {
+  const text = ' ' + words(`${p.name} ${p.category} ${p.description}`).map(stem).join(' ');
+  return words(q).every((w) => text.includes(' ' + stem(w)));
+}
 const productUrl = (p) => `/producto/${p.id}`;
 const photosOf = (p) => (p.images?.length ? p.images : p.image ? [p.image] : []);
 

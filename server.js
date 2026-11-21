@@ -220,6 +220,121 @@ function saveProductImages(productId, list) {
   db.prepare('UPDATE products SET image = ? WHERE id = ?').run(final[0] || '', productId);
 }
 
+/* ------------------------------ productos relacionados ------------------------------ */
+// Sin IA: se combinan dos señales.
+//  1) Palabras del nombre: productos que comparten palabras importantes ("taladro", la marca...)
+//     pesan más cuanto más rara es la palabra en el catálogo. El voltaje (12V, 20V) suma si coincide
+//     y resta si es distinto (una batería de 20V no sirve para un taladro de 12V).
+//  2) Pedidos: productos que los clientes compraron juntos.
+
+const STOPWORDS = new Set(
+  (
+    'de del la el los las para con sin y o a en un una unos unas x por al su sus que es se le lo ' +
+    'kit juego set pack tipo modelo mas cm mm pieza piezas unidad unidades ' +
+    // palabras de descripción que no dicen qué producto es
+    'incluye incluido incluida ideal alta calidad nuevo nueva original uso profesional color ' +
+    'potencia accesorio accesorios repuesto regulable sistema marca linea ' +
+    // características que comparten herramientas distintas (no las hacen "relacionadas")
+    'inalambrica inalambrico electrica electrico industrial'
+  ).split(' ')
+);
+
+// Singular simple: "taladros" -> "taladro", "motores" -> "motor", "mechas" -> "mecha"
+function stem(w) {
+  if (/^\d/.test(w)) return w;
+  if (w.length > 4 && /[rlndzj]es$/.test(w)) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+function tokenize(text) {
+  return [
+    ...new Set(
+      String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(' ')
+        .filter((w) => w.length >= 2 && !STOPWORDS.has(w) && !/^\d+$/.test(w))
+        .map(stem)
+    ),
+  ];
+}
+
+const isVolt = (t) => /^\d+v$/.test(t);
+const RELATED_MIN_SCORE = 1.5;
+
+function computeRelated(baseIds, limit = 8) {
+  const items = db.prepare('SELECT id, name, description FROM products WHERE active = 1 AND stock > 0').all();
+  const all = db.prepare('SELECT id, name, description FROM products WHERE active = 1').all();
+  const info = new Map(
+    all.map((p) => [p.id, { name: new Set(tokenize(p.name)), desc: new Set(tokenize(p.description)) }])
+  );
+  // Qué tan común es cada palabra en el catálogo (las comunes pesan poco)
+  const df = new Map();
+  for (const { name, desc } of info.values()) for (const t of new Set([...name, ...desc])) df.set(t, (df.get(t) || 0) + 1);
+  const N = Math.max(all.length, 2);
+  const idf = (t) => Math.log(N / (df.get(t) || 1));
+
+  // Veces que dos productos aparecen en el mismo pedido (sin contar cancelados ni rechazados)
+  const together = new Map();
+  for (const r of db
+    .prepare(
+      `SELECT a.product_id AS x, b.product_id AS y, COUNT(DISTINCT a.order_id) AS c
+       FROM order_items a
+       JOIN order_items b ON a.order_id = b.order_id AND a.product_id <> b.product_id
+       JOIN orders o ON o.id = a.order_id
+       WHERE o.status NOT IN ('cancelado', 'rechazado') AND a.product_id IS NOT NULL AND b.product_id IS NOT NULL
+       GROUP BY a.product_id, b.product_id`
+    )
+    .all()) {
+    together.set(`${r.x}-${r.y}`, r.c);
+  }
+
+  // Palabra "distintiva": aparece en pocos productos (no cuenta la marca si está en medio catálogo)
+  const distinctive = (t) => (df.get(t) || 0) / N <= 0.34;
+
+  const bases = baseIds.filter((id) => info.has(id));
+  const scores = new Map();
+  for (const c of items) {
+    if (bases.includes(c.id)) continue;
+    const ci = info.get(c.id);
+    let total = 0;
+    for (const b of bases) {
+      const bi = info.get(b);
+      let score = 0;
+      let core = false; // comparten al menos una palabra distintiva (no sólo marca o voltaje)
+      let shared = 0;
+      const add = (t, weight) => {
+        score += weight * idf(t);
+        shared++;
+        if (distinctive(t)) core = true;
+      };
+      for (const t of bi.name) {
+        if (isVolt(t)) continue;
+        if (ci.name.has(t)) add(t, 2);
+        else if (ci.desc.has(t)) add(t, 1.5); // ej: las mechas dicen "para taladro" en su descripción
+      }
+      for (const t of bi.desc) {
+        // y al revés: desde las mechas se llega al taladro
+        if (!bi.name.has(t) && !isVolt(t) && ci.name.has(t)) add(t, 1.5);
+      }
+      const bought = Math.min(together.get(`${b}-${c.id}`) || 0, 5);
+      const bv = [...bi.name].filter(isVolt);
+      const cv = [...ci.name].filter(isVolt);
+      const sameVolt = bv.length && cv.length && bv.some((v) => cv.includes(v));
+      // Mismo voltaje + al menos dos palabras en común (ej: "batería" y la marca) = compatibles
+      if (sameVolt && shared >= 2) core = true;
+      if (!core && !bought) continue; // sólo marca o sólo voltaje no alcanza para ser "relacionado"
+      if (bv.length && cv.length) score += sameVolt ? 1.5 : -2;
+      total += score + 4 * bought; // comprar juntos pesa bastante: es la señal más confiable
+    }
+    if (total >= RELATED_MIN_SCORE) scores.set(c.id, total);
+  }
+  return [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id);
+}
+
 function productInput(b) {
   const name = str(b.name);
   if (!name) throw httpError(400, 'El nombre es obligatorio.');
@@ -303,6 +418,21 @@ app.get('/api/products', (req, res) => {
       db.prepare('SELECT id, name, description, price, compare_price, stock, category, image, featured, created_at FROM products WHERE active = 1 ORDER BY id DESC').all()
     )
   );
+});
+
+// Relacionados de un producto (página del producto)
+app.get('/api/products/:id/related', (req, res) => {
+  res.json(computeRelated([Number(req.params.id)]));
+});
+
+// Relacionados de varios productos juntos (resultados del buscador): ?ids=3,5,8
+app.get('/api/related', (req, res) => {
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map(Number)
+    .filter(Number.isInteger)
+    .slice(0, 20);
+  res.json(ids.length ? computeRelated(ids) : []);
 });
 
 app.get('/api/products/:id', (req, res) => {

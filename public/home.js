@@ -17,10 +17,7 @@ function renderFilters() {
 
 function renderGrid() {
   let list = products.filter((p) => category === 'Todas' || p.category === category);
-  if (query) {
-    const q = norm(query);
-    list = list.filter((p) => norm(`${p.name} ${p.category} ${p.description}`).includes(q));
-  }
+  if (query) list = list.filter((p) => matchesSearch(p, query));
   const by = {
     new: (a, b) => b.id - a.id,
     'price-asc': (a, b) => a.price - b.price,
@@ -39,6 +36,29 @@ function renderGrid() {
   $('#grid').innerHTML = list.length
     ? list.map(card).join('')
     : `<p class="empty">${products.length ? 'No encontramos productos con esa búsqueda.' : 'Todavía no hay productos cargados.'}</p>`;
+
+  renderSearchRelated(query ? list : []);
+}
+
+// Debajo de los resultados de búsqueda: productos relacionados (accesorios, compatibles, comprados juntos)
+let relatedReq = 0;
+async function renderSearchRelated(results) {
+  const box = $('#searchRelated');
+  const req = ++relatedReq;
+  if (!results.length) {
+    box.hidden = true;
+    return;
+  }
+  try {
+    const ids = await api(`/api/related?ids=${results.slice(0, 12).map((p) => p.id).join(',')}`);
+    if (req !== relatedReq) return; // llegó una búsqueda más nueva mientras tanto
+    const list = ids.map((id) => products.find((p) => p.id === id)).filter(Boolean);
+    box.hidden = !list.length;
+    $('#searchRelatedTitle').textContent = `Relacionados con "${query}"`;
+    $('#searchRelatedRail').innerHTML = list.map(card).join('');
+  } catch {
+    box.hidden = true;
+  }
 }
 
 function renderNew() {
