@@ -246,7 +246,7 @@ function card(p) {
     <a class="pcard-media" href="${productUrl(p)}" aria-label="Ver ${esc(p.name)}">
       <span class="pcard-badges">
         ${off ? `<span class="tag sale">${off}%</span>` : ''}
-        ${out ? '<span class="tag out">Sin stock</span>' : p.stock <= 3 ? `<span class="tag low">¡Últimas ${p.stock}!</span>` : ''}
+        ${out ? '<span class="tag out">Sin stock</span>' : ''}
       </span>
       ${img1 ? `<img src="${esc(img1)}" alt="${esc(p.name)}" loading="lazy">` : '<span class="noimg">Sin foto</span>'}
       ${img2 ? `<img class="alt" src="${esc(img2)}" alt="" loading="lazy">` : ''}
