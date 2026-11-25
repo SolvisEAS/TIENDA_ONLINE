@@ -205,6 +205,22 @@
           <button class="btn primary">Guardar precios de delivery</button>
         </form>
 
+        <section class="form panel" id="apiPanel">
+          <h2>API para sistemas externos</h2>
+          <p class="muted" style="margin:0">Permite que otro sistema cambie el estado de los pedidos y lea o modifique el stock. Se usa con una clave secreta.</p>
+          <div id="apiStatus" class="api-status"></div>
+          <div id="apiKeyBox" class="api-key-box" hidden>
+            <strong>Copiá esta clave ahora: por seguridad no se vuelve a mostrar.</strong>
+            <code id="apiKeyValue"></code>
+            <button type="button" class="btn small" id="copyApiKey">Copiar clave</button>
+          </div>
+          <div class="mail-actions">
+            <button type="button" class="btn primary" id="genApiKey">Generar clave</button>
+            <button type="button" class="link danger" id="delApiKey" hidden>Desactivar la API</button>
+          </div>
+          <p class="hint" style="margin:0">Dirección de la API: <code id="apiBase"></code> · Instrucciones para el programador: archivo <code>deploy/API.md</code> del proyecto.</p>
+        </section>
+
         <form id="passwordForm" class="form panel">
           <h2>Cambiar mi contraseña</h2>
           <label>Contraseña actual <input type="password" name="current" required autocomplete="current-password"></label>
