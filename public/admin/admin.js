@@ -106,7 +106,6 @@ document.addEventListener('click', (e) => {
   if (currentTab === 'settings') {
     loadSettings();
     loadDelivery();
-    loadApiKey();
   }
 });
 
@@ -387,7 +386,7 @@ function formatSlot(date, time) {
 }
 
 const ORDER_STATUSES = ['pendiente', 'confirmado', 'entregado', 'cancelado', 'rechazado'];
-const HOLDS_STOCK = ['confirmado', 'entregado']; // en estos estados el stock del pedido está descontado
+const CLOSED = ['cancelado', 'rechazado'];
 const statusLabel = (s) => s[0].toUpperCase() + s.slice(1);
 
 function renderOrders(orders) {
@@ -408,7 +407,6 @@ function renderOrders(orders) {
           <div>Factura: ${o.invoice ? `<strong>Sí</strong> · Ruc/CI: <strong>${esc(o.ruc)}</strong>` : 'No'}</div>
           ${o.notes ? `<div>Aclaraciones: ${esc(o.notes)}</div>` : ''}
           <div class="muted">Recibido: ${esc(o.created_at)}</div>
-          <div>${o.stock_descontado ? '<span class="stock-flag on">Stock descontado</span>' : '<span class="stock-flag">Stock sin descontar</span>'}</div>
         </div>
         <ul>${o.items.map((it) => `<li>${it.quantity} × ${esc(it.product_name)} — ${money(it.unit_price * it.quantity)}</li>`).join('')}</ul>
         ${o.status === 'rechazado' && o.reject_reason ? `<div class="reject-note">Motivo del rechazo: ${esc(o.reject_reason)}</div>` : ''}
@@ -424,7 +422,7 @@ function renderOrders(orders) {
             ${o.delivery_fee ? `<div class="muted">Productos ${money(o.subtotal ?? o.total - o.delivery_fee)} + delivery ${money(o.delivery_fee)}</div>` : ''}
             <strong>Total: ${money(o.total)}</strong>
           </div>
-          <select class="status ${o.status}" data-order="${o.id}" data-held="${o.stock_descontado ? 1 : 0}" aria-label="Estado del pedido">
+          <select class="status ${o.status}" data-order="${o.id}" ${CLOSED.includes(o.status) ? 'disabled' : ''} aria-label="Estado del pedido">
             ${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
           </select>
         </div>
@@ -440,23 +438,22 @@ $('#orderList').addEventListener('change', async (e) => {
   const id = e.target.dataset.order;
   if (!id) return;
   const status = e.target.value;
-  const held = e.target.dataset.held === '1';
-  // Qué va a pasar con el stock (se mueve una sola vez, según la marca del pedido)
-  const stockNote = HOLDS_STOCK.includes(status)
-    ? held ? 'El stock ya estaba descontado: no cambia.' : 'Se va a DESCONTAR el stock de sus productos.'
-    : held ? 'Se va a DEVOLVER el stock de sus productos.' : 'El stock no estaba descontado: no cambia.';
   let reason = '';
-  if (status === 'rechazado') {
-    reason = prompt(`¿Rechazar este pedido?\n\n${stockNote}\nSi querés, escribí el motivo (por ejemplo: "fuera de zona de envío"):`, '');
-    if (reason === null) return loadOrders(); // tocó Cancelar
-  } else if (!confirm(`¿Pasar el pedido a "${statusLabel(status)}"?\n\n${stockNote}`)) {
+  if (status === 'cancelado' && !confirm('¿Cancelar este pedido?\n\nEl stock de sus productos se va a reponer y el pedido ya no se podrá reactivar.')) {
     return loadOrders();
   }
+  if (status === 'rechazado') {
+    reason = prompt(
+      '¿Rechazar este pedido?\n\nEl stock se va a reponer y el pedido ya no se podrá reactivar.\nSi querés, escribí el motivo (por ejemplo: "fuera de zona de envío"):',
+      ''
+    );
+    if (reason === null) return loadOrders(); // tocó Cancelar
+  }
   try {
-    const r = await api(`/api/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status, reason }) });
-    toast(r.stock === 'descontado' ? 'Pedido actualizado: stock descontado' : r.stock === 'devuelto' ? 'Pedido actualizado: stock devuelto' : 'Pedido actualizado');
+    await api(`/api/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status, reason }) });
+    toast('Pedido actualizado');
     loadOrders();
-    if (r.stock !== 'sin_cambios') loadProducts();
+    if (CLOSED.includes(status)) loadProducts();
   } catch (err) {
     toast(err.message, true);
     loadOrders();
@@ -525,56 +522,6 @@ $('#passwordForm').addEventListener('submit', async (e) => {
     });
     f.reset();
     toast('Contraseña cambiada');
-  } catch (err) {
-    toast(err.message, true);
-  }
-});
-
-/* ---------------- clave de la API ---------------- */
-
-async function loadApiKey() {
-  $('#apiBase').textContent = `${location.origin}/api/v1`;
-  try {
-    const k = await api('/api/admin/api-key');
-    $('#apiStatus').innerHTML = k.active
-      ? `<span class="ok">✓ API activa</span> · clave terminada en <code>…${esc(k.hint)}</code> · creada el ${esc(k.created_at)}`
-      : '<span class="warn">API desactivada: generá una clave para usarla.</span>';
-    $('#genApiKey').textContent = k.active ? 'Generar clave nueva' : 'Generar clave';
-    $('#delApiKey').hidden = !k.active;
-  } catch (err) {
-    if (!err.offline) toast(err.message, true);
-  }
-}
-
-$('#genApiKey').addEventListener('click', async () => {
-  const active = $('#genApiKey').textContent.includes('nueva');
-  if (active && !confirm('¿Generar una clave nueva?\n\nLa clave actual deja de funcionar en el momento: el sistema que la use va a necesitar la nueva.')) return;
-  try {
-    const { key } = await api('/api/admin/api-key', { method: 'POST' });
-    $('#apiKeyValue').textContent = key;
-    $('#apiKeyBox').hidden = false;
-    loadApiKey();
-  } catch (err) {
-    toast(err.message, true);
-  }
-});
-
-$('#copyApiKey').addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText($('#apiKeyValue').textContent);
-    toast('Clave copiada');
-  } catch {
-    toast('No se pudo copiar: seleccioná la clave y copiala a mano.', true);
-  }
-});
-
-$('#delApiKey').addEventListener('click', async () => {
-  if (!confirm('¿Desactivar la API?\n\nLa clave actual deja de funcionar y ningún sistema externo va a poder usar la API hasta que generes una nueva.')) return;
-  try {
-    await api('/api/admin/api-key', { method: 'DELETE' });
-    $('#apiKeyBox').hidden = true;
-    toast('API desactivada');
-    loadApiKey();
   } catch (err) {
     toast(err.message, true);
   }
