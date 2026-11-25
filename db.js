@@ -120,6 +120,33 @@ for (const [col, def] of [
 }
 db.exec('UPDATE orders SET subtotal = total WHERE subtotal IS NULL'); // pedidos anteriores: no tenían delivery
 
+// Marca por pedido: 1 = el stock de este pedido está descontado.
+// Con ella el stock se descuenta y se devuelve UNA sola vez, pase el pedido por los estados que pase.
+if (!db.prepare('PRAGMA table_info(orders)').all().some((c) => c.name === 'stock_descontado')) {
+  db.exec('ALTER TABLE orders ADD COLUMN stock_descontado INTEGER NOT NULL DEFAULT 0');
+  // Antes, el stock se descontaba al crear el pedido y se devolvía al cancelar o rechazar:
+  // los pedidos que no están cancelados ni rechazados ya tienen su stock descontado.
+  // (No se cambia ningún número de stock: sólo se anota cómo está cada pedido.)
+  db.exec("UPDATE orders SET stock_descontado = 1 WHERE status NOT IN ('cancelado', 'rechazado')");
+}
+
+// Historial de cada cambio de stock: por pedidos, por la API o desde el panel
+db.exec(`
+  CREATE TABLE IF NOT EXISTS stock_movements (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id   INTEGER NOT NULL,
+    product_name TEXT    NOT NULL DEFAULT '',
+    change       INTEGER NOT NULL,          -- negativo = salió stock, positivo = entró
+    stock_after  INTEGER NOT NULL,
+    source       TEXT    NOT NULL,          -- 'pedido' | 'api' | 'panel'
+    order_id     INTEGER,
+    reason       TEXT    NOT NULL DEFAULT '',
+    username     TEXT    NOT NULL DEFAULT '',
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id, id);
+`);
+
 // Pedidos entregados antes de existir la fecha de entrega: se toma la del último cambio o la del pedido
 db.exec(`UPDATE orders SET delivered_at = COALESCE(status_changed_at, created_at)
          WHERE status = 'entregado' AND delivered_at IS NULL`);
