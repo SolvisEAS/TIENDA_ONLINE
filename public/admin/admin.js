@@ -410,7 +410,15 @@ function renderOrders(orders) {
           <div class="muted">Recibido: ${esc(o.created_at)}</div>
           <div>${o.stock_descontado ? '<span class="stock-flag on">Stock descontado</span>' : '<span class="stock-flag">Stock sin descontar</span>'}</div>
         </div>
+        ${o.original_items ? '<div class="sold-label">Vendido (modificado por la API):</div>' : ''}
         <ul>${o.items.map((it) => `<li>${it.quantity} × ${esc(it.product_name)} — ${money(it.unit_price * it.quantity)}</li>`).join('')}</ul>
+        ${
+          o.original_items
+            ? `<details class="history"><summary>Pedido original del cliente</summary><ul>${JSON.parse(o.original_items)
+                .map((it) => `<li>${it.cantidad} × ${esc(it.nombre)} — ${money(it.precio_unitario * it.cantidad)}</li>`)
+                .join('')}</ul></details>`
+            : ''
+        }
         ${o.status === 'rechazado' && o.reject_reason ? `<div class="reject-note">Motivo del rechazo: ${esc(o.reject_reason)}</div>` : ''}
         ${
           o.history?.length > 1

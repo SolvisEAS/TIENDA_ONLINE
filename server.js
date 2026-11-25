@@ -82,16 +82,107 @@ function setStock(productId, stock, source, { reason = '', username = '' } = {})
   return change;
 }
 
-function changeOrderStatus(id, status, { note = '', username = '', source = 'panel' } = {}) {
-  if (!STATUSES.includes(status)) throw httpError(400, `Estado no válido. Usá uno de estos: ${STATUSES.join(', ')}.`);
+// Ejecuta fn dentro de una transacción: o se aplica todo, o nada
+function inTransaction(fn) {
   db.exec('BEGIN IMMEDIATE');
   try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+function changeOrderStatus(id, status, opts = {}) {
+  if (!STATUSES.includes(status)) throw httpError(400, `Estado no válido. Usá uno de estos: ${STATUSES.join(', ')}.`);
+  return inTransaction(() => applyStatus(id, status, opts));
+}
+
+// Modifica los productos de un pedido (lo usa la API). Debe llamarse dentro de una transacción.
+// - Se guarda una sola vez lo que el cliente pidió originalmente (original_items).
+// - Si el pedido YA tiene el stock descontado, se ajusta sólo la diferencia (ej: de 3 a 2 devuelve 1).
+// - El total se recalcula; el delivery queda igual.
+function applyItems(id, productos, { username = '', source = 'api' } = {}) {
+  if (!Array.isArray(productos) || !productos.length) {
+    throw httpError(400, '"productos" debe ser una lista con al menos un producto. Para anular el pedido, cambiá el estado a "cancelado".');
+  }
+  if (productos.length > 100) throw httpError(400, 'Demasiados productos en un pedido (máximo 100).');
+  const wanted = new Map();
+  productos.forEach((it, i) => {
+    const pid = Number(it?.producto_id);
+    const qty = Number(it?.cantidad);
+    if (!Number.isInteger(pid) || pid < 1) throw httpError(400, `Producto ${i + 1}: "producto_id" no es válido.`);
+    if (!Number.isInteger(qty) || qty < 1) throw httpError(400, `Producto ${i + 1}: "cantidad" debe ser un número entero mayor que 0.`);
+    wanted.set(pid, (wanted.get(pid) || 0) + qty);
+  });
+
+  const order = db.prepare('SELECT id, status, stock_descontado, delivery_fee, original_items FROM orders WHERE id = ?').get(id);
+  if (!order) throw httpError(404, 'Pedido no encontrado.');
+  const current = db.prepare('SELECT product_id, product_name, quantity, unit_price FROM order_items WHERE order_id = ? ORDER BY id').all(id);
+
+  const next = [];
+  for (const [pid, qty] of wanted) {
+    const prev = current.find((c) => c.product_id === pid);
+    const p = db.prepare('SELECT id, name, price, stock FROM products WHERE id = ?').get(pid);
+    if (!p && !prev) throw httpError(400, `El producto ${pid} no existe.`);
+    // Si el producto ya estaba en el pedido se respeta su precio; si es nuevo, va con el precio actual
+    next.push({ product_id: pid, product_name: prev ? prev.product_name : p.name, quantity: qty, unit_price: prev ? prev.unit_price : p.price, exists: !!p });
+  }
+
+  const same =
+    next.length === current.length && next.every((n) => current.some((c) => c.product_id === n.product_id && c.quantity === n.quantity));
+  if (same) return { changed: false, stock: 'sin_cambios' };
+
+  let stock = 'sin_cambios';
+  if (order.stock_descontado) {
+    // Diferencia por producto: positiva = hay que descontar más, negativa = hay que devolver
+    const delta = new Map();
+    for (const c of current) if (c.product_id) delta.set(c.product_id, (delta.get(c.product_id) || 0) - c.quantity);
+    for (const n of next) delta.set(n.product_id, (delta.get(n.product_id) || 0) + n.quantity);
+    const missing = [];
+    for (const [pid, d] of delta) {
+      if (d <= 0) continue;
+      const p = db.prepare('SELECT name, stock FROM products WHERE id = ?').get(pid);
+      if (p && p.stock < d) missing.push(`"${p.name}" (hay ${p.stock}, faltan ${d})`);
+    }
+    if (missing.length) throw httpError(409, `No hay stock suficiente de ${missing.join(', ')}. El pedido no se modificó.`);
+    const info = { orderId: id, reason: `Pedido #${id} modificado`, username };
+    for (const [pid, d] of delta) {
+      if (!d || !db.prepare('SELECT 1 FROM products WHERE id = ?').get(pid)) continue;
+      moveStock(pid, -d, source, info);
+      stock = 'ajustado';
+    }
+  }
+
+  if (!order.original_items) {
+    const original = current.map((c) => ({ producto_id: c.product_id, nombre: c.product_name, cantidad: c.quantity, precio_unitario: c.unit_price }));
+    db.prepare('UPDATE orders SET original_items = ? WHERE id = ?').run(JSON.stringify(original), id);
+  }
+  db.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+  const ins = db.prepare('INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)');
+  for (const n of next) ins.run(id, n.product_id, n.product_name, n.quantity, n.unit_price);
+  const subtotal = next.reduce((s, n) => s + n.quantity * n.unit_price, 0);
+  db.prepare('UPDATE orders SET subtotal = ?, total = ? WHERE id = ?').run(subtotal, subtotal + (order.delivery_fee || 0), id);
+
+  const desc = next.map((n) => `${n.quantity} x ${n.product_name}`).join(', ');
+  db.prepare('INSERT INTO order_status_history (order_id, status, note, username) VALUES (?, ?, ?, ?)').run(
+    id,
+    order.status,
+    `Productos modificados: ${desc}`.slice(0, 300),
+    username
+  );
+  return { changed: true, stock };
+}
+
+// Cambia el estado y mueve el stock según la regla única. Debe llamarse dentro de una transacción.
+function applyStatus(id, status, { note = '', username = '', source = 'panel' } = {}) {
+  if (!STATUSES.includes(status)) throw httpError(400, `Estado no válido. Usá uno de estos: ${STATUSES.join(', ')}.`);
+  {
     const order = db.prepare('SELECT id, status, stock_descontado FROM orders WHERE id = ?').get(id);
     if (!order) throw httpError(404, 'Pedido no encontrado.');
-    if (order.status === status) {
-      db.exec('COMMIT');
-      return { changed: false, stock: 'sin_cambios' };
-    }
+    if (order.status === status) return { changed: false, stock: 'sin_cambios' };
 
     const items = db
       .prepare(
@@ -129,11 +220,7 @@ function changeOrderStatus(id, status, { note = '', username = '', source = 'pan
        WHERE id = ?`
     ).run(status, status, note, status, id);
     db.prepare('INSERT INTO order_status_history (order_id, status, note, username) VALUES (?, ?, ?, ?)').run(id, status, note, username);
-    db.exec('COMMIT');
     return { changed: true, stock };
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
   }
 }
 
@@ -1164,6 +1251,8 @@ function apiOrder(o) {
     notas: o.notes || null,
     motivo_rechazo: o.reject_reason || null,
     entregado_el: o.delivered_at || null,
+    modificado: !!o.original_items,
+    productos_originales: o.original_items ? JSON.parse(o.original_items) : null, // lo que pidió el cliente en la web
     historial: history.map((h) => ({ estado: h.status, fecha: h.changed_at, por: h.username || 'cliente', nota: h.note || null })),
   };
 }
@@ -1204,15 +1293,30 @@ app.get('/api/v1/pedidos/:id', (req, res) => {
   res.json(apiOrder(o));
 });
 
+// Modificar un pedido: productos reales, estado nuevo, o las dos cosas en la misma llamada.
+// Primero se aplican los productos y después el estado, todo junto (o nada).
 app.patch('/api/v1/pedidos/:id', (req, res) => {
   const id = Number(req.params.id);
-  const estado = str(req.body?.estado);
-  if (!estado) throw httpError(400, 'Falta "estado".');
-  const result = changeOrderStatus(id, estado, { note: str(req.body?.motivo).slice(0, 300), username: 'API', source: 'api' });
+  const b = req.body || {};
+  const estado = str(b.estado);
+  const hasItems = b.productos !== undefined;
+  if (!hasItems && !estado) throw httpError(400, 'Mandá "productos", "estado" o las dos cosas.');
+  if (estado && !STATUSES.includes(estado)) throw httpError(400, `Estado no válido. Usá uno de estos: ${STATUSES.join(', ')}.`);
+  const opts = { note: str(b.motivo).slice(0, 300), username: 'API', source: 'api' };
+
+  const result = inTransaction(() => {
+    if (!db.prepare('SELECT 1 FROM orders WHERE id = ?').get(id)) throw httpError(404, 'Pedido no encontrado.');
+    const items = hasItems ? applyItems(id, b.productos, opts) : { changed: false, stock: 'sin_cambios' };
+    const status = estado ? applyStatus(id, estado, opts) : { changed: false, stock: 'sin_cambios' };
+    return { items, status };
+  });
+
   res.json({
     ok: true,
-    cambio_estado: result.changed,
-    stock: result.stock, // 'descontado' | 'devuelto' | 'sin_cambios'
+    productos_modificados: result.items.changed,
+    cambio_estado: result.status.changed,
+    // qué pasó con el stock: 'descontado' | 'devuelto' | 'ajustado' | 'sin_cambios'
+    stock: result.status.stock !== 'sin_cambios' ? result.status.stock : result.items.stock,
     pedido: apiOrder(db.prepare('SELECT * FROM orders WHERE id = ?').get(id)),
   });
 });
@@ -1229,38 +1333,7 @@ app.get('/api/v1/productos/:id', (req, res) => {
   res.json(apiProduct(p));
 });
 
-function apiStockChange(req, res, fn) {
-  const id = Number(req.params.id);
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    fn(id);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
-  res.json({ ok: true, producto: apiProduct(db.prepare('SELECT * FROM products WHERE id = ?').get(id)) });
-}
-
-// Fijar el stock: { "stock": 10, "motivo": "inventario" }
-app.put('/api/v1/productos/:id/stock', (req, res) => {
-  if (req.body?.stock === undefined) throw httpError(400, 'Falta "stock".');
-  apiStockChange(req, res, (id) =>
-    setStock(id, Number(req.body.stock), 'api', { reason: str(req.body?.motivo).slice(0, 200) || 'Stock fijado por la API', username: 'API' })
-  );
-});
-
-// Sumar o restar: { "cantidad": -2, "motivo": "venta en el local" }
-app.post('/api/v1/productos/:id/stock/ajuste', (req, res) => {
-  const cantidad = Number(req.body?.cantidad);
-  if (!Number.isInteger(cantidad) || cantidad === 0) throw httpError(400, '"cantidad" debe ser un número entero distinto de 0 (negativo para restar).');
-  apiStockChange(req, res, (id) => {
-    const p = db.prepare('SELECT stock FROM products WHERE id = ?').get(id);
-    if (!p) throw httpError(404, 'Producto no encontrado.');
-    const ok = moveStock(id, cantidad, 'api', { reason: str(req.body?.motivo).slice(0, 200) || 'Ajuste por la API', username: 'API' });
-    if (!ok) throw httpError(409, `No se puede restar ${-cantidad}: el producto tiene ${p.stock} en stock.`);
-  });
-});
+// (La API sólo MIRA el stock: no tiene rutas para modificarlo.)
 
 // Historial de movimientos de stock: ?producto=36&limite=100
 app.get('/api/v1/stock/movimientos', (req, res) => {

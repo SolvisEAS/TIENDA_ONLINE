@@ -130,6 +130,11 @@ if (!db.prepare('PRAGMA table_info(orders)').all().some((c) => c.name === 'stock
   db.exec("UPDATE orders SET stock_descontado = 1 WHERE status NOT IN ('cancelado', 'rechazado')");
 }
 
+// Lo que el cliente pidió originalmente en la web (JSON), guardado la primera vez que la API modifica el pedido
+if (!db.prepare('PRAGMA table_info(orders)').all().some((c) => c.name === 'original_items')) {
+  db.exec('ALTER TABLE orders ADD COLUMN original_items TEXT');
+}
+
 // Historial de cada cambio de stock: por pedidos, por la API o desde el panel
 db.exec(`
   CREATE TABLE IF NOT EXISTS stock_movements (

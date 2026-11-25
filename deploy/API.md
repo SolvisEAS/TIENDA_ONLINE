@@ -1,45 +1,55 @@
 # API de Todo Herramientas
 
-API para que un sistema externo **cambie el estado de los pedidos** de la tienda web y **lea o modifique el stock**.
+API para que un sistema externo **modifique los pedidos** de la tienda web (productos vendidos y estado)
+y **consulte el stock**. La API **no modifica el stock directamente**: el stock lo mueve la web sola,
+según el estado de cada pedido.
 
 - **Dirección base:** `https://todoherramientas.solvis.com.py/api/v1`
-- **Formato:** JSON (enviar la cabecera `Content-Type: application/json` en `PUT`, `PATCH` y `POST`).
+- **Formato:** JSON. En `PATCH` enviar la cabecera `Content-Type: application/json`.
 - **Límite:** 120 llamadas por minuto.
 
 ## Clave de acceso
 
-La clave se genera en el panel: **Configuración → API para sistemas externos → Generar clave**.
+Se genera en el panel: **Configuración → API para sistemas externos → Generar clave**.
 Se muestra **una sola vez**; si se pierde, se genera otra (la anterior deja de funcionar).
 
-Enviarla en cada llamada con una de estas cabeceras:
+Enviarla en cada llamada:
 
 ```
 Authorization: Bearer th_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
-```
-X-API-Key: th_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
 
-## Cómo se mueve el stock con los pedidos
+(también se acepta la cabecera `X-API-Key: th_xxxx...`)
 
-Cuando un cliente hace un pedido en la web, el pedido queda **Pendiente** y el stock **todavía no se descuenta**
-(sólo se revisa que haya stock suficiente). El stock se mueve al cambiar el estado:
+---
 
-| El pedido pasa a…                    | Stock                                                         |
-|--------------------------------------|---------------------------------------------------------------|
-| `confirmado` o `entregado`           | Se **descuenta**, si todavía no estaba descontado             |
-| `pendiente`, `cancelado` o `rechazado` | Se **devuelve**, si estaba descontado                       |
+## Cómo funciona (leer antes de integrar)
 
-Cada pedido tiene la marca `stock_descontado` (`true`/`false`). **El stock se descuenta y se devuelve una sola vez**,
-pase el pedido por los estados que pase. Ejemplos:
+1. El cliente hace un pedido en la web → queda **`pendiente`**. **El stock no se descuenta todavía.**
+2. La venta se cierra por WhatsApp. Si cambió algo (otra cantidad, un producto menos, uno más),
+   su sistema **modifica el pedido** con lo que realmente se vendió.
+3. Su sistema pasa el pedido a **`confirmado`** (o `entregado`) → **la web descuenta el stock automáticamente**,
+   según los productos que tiene el pedido en ese momento.
+4. Si la venta no se concreta → pasan el pedido a **`cancelado`** o **`rechazado`** → si el stock estaba descontado,
+   **la web lo devuelve automáticamente**.
 
-- `pendiente → confirmado`: descuenta. Después `confirmado → entregado`: no cambia (ya estaba descontado).
-- `confirmado → cancelado`: devuelve. Después `cancelado → rechazado`: no cambia (ya se había devuelto).
-- `cancelado → confirmado`: vuelve a descontar (si hay stock).
+**El stock se descuenta y se devuelve una sola vez.** Cada pedido tiene la marca `stock_descontado`:
 
-Si al confirmar no alcanza el stock, la API responde **409** y el pedido **no cambia**.
+| El pedido pasa a…                      | Stock                                             |
+|----------------------------------------|---------------------------------------------------|
+| `confirmado` o `entregado`             | Se descuenta, si todavía no estaba descontado     |
+| `pendiente`, `cancelado` o `rechazado` | Se devuelve, si estaba descontado                 |
+| `confirmado` → `entregado`             | No cambia (ya estaba descontado)                  |
+| `cancelado` → `rechazado`              | No cambia (ya se había devuelto)                  |
 
-Los mismos cambios hechos a mano desde el panel siguen exactamente la misma regla.
+Si se modifican los productos de un pedido que **ya tiene el stock descontado**, la web ajusta **sólo la diferencia**
+(ej: de 3 unidades a 2 devuelve 1).
+
+> **Orden recomendado:** modificar los productos y cambiar el estado **en la misma llamada** (ver ejemplo abajo).
+> Así nunca queda un pedido confirmado con productos viejos.
+
+Los reportes de la web se calculan con los productos del pedido, por eso es importante que el pedido refleje
+**lo que realmente se vendió**.
 
 ---
 
@@ -51,16 +61,14 @@ Los mismos cambios hechos a mano desde el panel siguen exactamente la misma regl
 GET /pedidos?estado=pendiente&desde=2026-11-01&hasta=2026-11-30&limite=50
 ```
 
-Todos los filtros son opcionales. `estado`: `pendiente`, `confirmado`, `entregado`, `cancelado`, `rechazado`.
-`limite`: hasta 500 (50 por defecto). Ordenados del más nuevo al más viejo.
+Filtros opcionales. `estado`: `pendiente`, `confirmado`, `entregado`, `cancelado`, `rechazado`.
+`limite`: hasta 500 (50 por defecto). Del más nuevo al más viejo.
 
 ### Ver un pedido
 
 ```
 GET /pedidos/25
 ```
-
-Respuesta:
 
 ```json
 {
@@ -72,44 +80,65 @@ Respuesta:
   "entrega": { "tipo": "envio", "ciudad": "Asunción", "direccion": "Calle 1", "dia": "2026-11-25", "hora": "09:30" },
   "factura": { "necesita": true, "ruc": "80012345-6" },
   "productos": [
-    { "producto_id": 36, "nombre": "TALADRO PERCUTOR MAKITA - 13MM", "cantidad": 1, "precio_unitario": 450000, "subtotal": 450000 }
+    { "producto_id": 36, "nombre": "TALADRO PERCUTOR MAKITA - 13MM", "cantidad": 2, "precio_unitario": 450000, "subtotal": 900000 }
   ],
-  "subtotal": 450000,
+  "subtotal": 900000,
   "delivery": 25000,
-  "total": 475000,
+  "total": 925000,
   "notas": null,
   "motivo_rechazo": null,
   "entregado_el": null,
+  "modificado": false,
+  "productos_originales": null,
   "historial": [ { "estado": "pendiente", "fecha": "2026-11-24 10:15:00", "por": "cliente", "nota": null } ]
 }
 ```
 
-El número de pedido es el mismo que aparece en el mensaje de WhatsApp (*"Nuevo pedido #25"*).
+El número de pedido es el mismo del mensaje de WhatsApp (*"Nuevo pedido #25"*).
+Si el pedido fue modificado, `productos_originales` muestra lo que el cliente pidió en la web.
 
-### Cambiar el estado de un pedido
+### Modificar un pedido
 
 ```
 PATCH /pedidos/25
-{ "estado": "confirmado", "motivo": "Venta confirmada por WhatsApp" }
 ```
 
-`motivo` es opcional (en `rechazado` se guarda como motivo del rechazo). Respuesta:
+Se puede mandar **`productos`**, **`estado`** o **las dos cosas**:
 
 ```json
-{ "ok": true, "cambio_estado": true, "stock": "descontado", "pedido": { ... } }
+{
+  "productos": [
+    { "producto_id": 36, "cantidad": 1 },
+    { "producto_id": 41, "cantidad": 1 }
+  ],
+  "estado": "confirmado",
+  "motivo": "Venta cerrada por WhatsApp"
+}
 ```
 
-`stock` indica qué pasó: `descontado`, `devuelto` o `sin_cambios`.
+- **`productos`**: la lista **completa** de lo que se vendió (reemplaza a la anterior). Se pueden quitar productos,
+  cambiar cantidades y **agregar** productos nuevos (van con el precio actual de la web; los que ya estaban
+  mantienen su precio). El total se recalcula; el delivery no cambia.
+- **`estado`**: el estado nuevo.
+- **`motivo`**: opcional. En `rechazado` se guarda como motivo del rechazo.
+
+Respuesta:
+
+```json
+{ "ok": true, "productos_modificados": true, "cambio_estado": true, "stock": "descontado", "pedido": { ... } }
+```
+
+`stock` indica qué hizo la web: `descontado`, `devuelto`, `ajustado` (se corrigió la diferencia) o `sin_cambios`.
+
+Si algo falla (por ejemplo, no hay stock para confirmar), **no se aplica nada**: ni los productos ni el estado.
 
 ---
 
-## Stock
-
-### Ver todos los productos / uno
+## Stock (sólo consulta)
 
 ```
-GET /productos            (todos)
-GET /productos?visibles=1 (sólo los visibles en la tienda)
+GET /productos             (todos)
+GET /productos?visibles=1  (sólo los visibles en la tienda)
 GET /productos/36
 ```
 
@@ -117,32 +146,13 @@ GET /productos/36
 { "id": 36, "nombre": "TALADRO PERCUTOR MAKITA - 13MM", "categoria": "Herramientas eléctricas", "precio": 450000, "stock": 4, "visible": true }
 ```
 
-El `id` es el número del producto en la web (el mismo de `https://todoherramientas.solvis.com.py/producto/36`).
-
-### Fijar el stock
-
-```
-PUT /productos/36/stock
-{ "stock": 10, "motivo": "Inventario" }
-```
-
-### Sumar o restar stock
-
-```
-POST /productos/36/stock/ajuste
-{ "cantidad": -2, "motivo": "Venta en el local" }
-```
-
-`cantidad` negativa resta y positiva suma. Si se quiere restar más de lo que hay, responde **409** y no cambia nada
-(el stock nunca queda negativo).
+El `id` es el número del producto en la web (`https://todoherramientas.solvis.com.py/producto/36`).
 
 ### Historial de movimientos de stock
 
 ```
 GET /stock/movimientos?producto=36&limite=100
 ```
-
-Cada cambio de stock queda anotado: por pedidos, por la API o desde el panel.
 
 ```json
 [ { "id": 120, "fecha": "2026-11-24 10:20:00", "producto_id": 36, "producto": "TALADRO PERCUTOR MAKITA - 13MM",
@@ -157,10 +167,10 @@ Siempre con un mensaje en español: `{ "error": "..." }`
 
 | Código | Significa |
 |---|---|
-| 400 | Faltan datos o no son válidos |
+| 400 | Faltan datos o no son válidos (estado, producto, cantidad) |
 | 401 | Clave de API inválida o faltante |
 | 404 | El pedido o producto no existe |
-| 409 | No hay stock suficiente (el cambio no se aplicó) |
+| 409 | No hay stock suficiente: **no se aplicó ningún cambio** |
 | 429 | Más de 120 llamadas por minuto |
 | 503 | La API está desactivada (no hay clave generada) |
 
@@ -170,5 +180,5 @@ Siempre con un mensaje en español: `{ "error": "..." }`
 curl -X PATCH https://todoherramientas.solvis.com.py/api/v1/pedidos/25 \
   -H "Authorization: Bearer th_xxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  -d '{"estado": "confirmado", "motivo": "Venta confirmada por WhatsApp"}'
+  -d '{"productos":[{"producto_id":36,"cantidad":1}],"estado":"confirmado","motivo":"Venta cerrada por WhatsApp"}'
 ```
