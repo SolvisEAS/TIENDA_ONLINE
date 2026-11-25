@@ -1333,7 +1333,38 @@ app.get('/api/v1/productos/:id', (req, res) => {
   res.json(apiProduct(p));
 });
 
-// (La API sólo MIRA el stock: no tiene rutas para modificarlo.)
+// Modificar el stock directamente (opcional, para inventario, ingresos de mercadería, roturas, etc.).
+// Para las ventas de los pedidos NO hace falta: la web descuenta sola al confirmar el pedido.
+function apiStockChange(req, res, fn) {
+  const id = Number(req.params.id);
+  inTransaction(() => {
+    if (!db.prepare('SELECT 1 FROM products WHERE id = ?').get(id)) throw httpError(404, 'Producto no encontrado.');
+    fn(id);
+  });
+  res.json({ ok: true, producto: apiProduct(db.prepare('SELECT * FROM products WHERE id = ?').get(id)) });
+}
+
+// Fijar el stock en un valor: { "stock": 10, "motivo": "Inventario" }
+app.put('/api/v1/productos/:id/stock', (req, res) => {
+  if (req.body?.stock === undefined) throw httpError(400, 'Falta "stock".');
+  apiStockChange(req, res, (id) =>
+    setStock(id, Number(req.body.stock), 'api', { reason: str(req.body?.motivo).slice(0, 200) || 'Stock fijado por la API', username: 'API' })
+  );
+});
+
+// Sumar o restar: { "cantidad": -2, "motivo": "Rotura" }
+app.post('/api/v1/productos/:id/stock/ajuste', (req, res) => {
+  const cantidad = Number(req.body?.cantidad);
+  if (!Number.isInteger(cantidad) || cantidad === 0) {
+    throw httpError(400, '"cantidad" debe ser un número entero distinto de 0 (positivo para sumar, negativo para restar).');
+  }
+  apiStockChange(req, res, (id) => {
+    const p = db.prepare('SELECT stock FROM products WHERE id = ?').get(id);
+    const done = moveStock(id, cantidad, 'api', { reason: str(req.body?.motivo).slice(0, 200) || 'Ajuste por la API', username: 'API' });
+    if (!done) throw httpError(409, `No se puede restar ${-cantidad}: el producto tiene ${p.stock} en stock. El stock no cambió.`);
+  });
+});
+
 
 // Historial de movimientos de stock: ?producto=36&limite=100
 app.get('/api/v1/stock/movimientos', (req, res) => {
