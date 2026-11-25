@@ -19,3 +19,6 @@ npm-debug.log*
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Archivos temporales de Word/Excel (se crean al tener el documento abierto)
+~$*
