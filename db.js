@@ -219,6 +219,25 @@ db.prepare("DELETE FROM settings WHERE key LIKE 'smtp_%'").run();
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 if (!userCols.includes('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
 
+// Tipo de usuario: 'panel' (entra a /admin) o 'api' (sólo puede usar la API con token)
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'role')) {
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'panel'");
+}
+
+// Tokens de la API: se obtienen con usuario y contraseña y duran 24 horas.
+// Se guarda sólo el "hash" del token, nunca el token.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS api_tokens (
+    token_hash      TEXT    PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_version INTEGER NOT NULL,
+    expires_at      INTEGER NOT NULL,          -- milisegundos (Date.now())
+    created_at      INTEGER NOT NULL
+  );
+`);
+// La clave de API generada en el panel ya no se usa (ahora es usuario + contraseña -> token)
+db.prepare("DELETE FROM settings WHERE key IN ('api_key_hash', 'api_key_hint', 'api_key_created')").run();
+
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,30}$/;
 
 function validateNewUser(username, password) {
@@ -229,13 +248,15 @@ function validateNewUser(username, password) {
   return null;
 }
 
-function createUser(username, password) {
+function createUser(username, password, role = 'panel') {
   const error = validateNewUser(username, password);
   if (error) throw Object.assign(new Error(error), { status: 400 });
   if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) {
     throw Object.assign(new Error(`Ya existe el usuario "${username}".`), { status: 409 });
   }
-  const r = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, hashPassword(password));
+  const r = db
+    .prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)')
+    .run(username, hashPassword(password), role === 'api' ? 'api' : 'panel');
   return Number(r.lastInsertRowid);
 }
 

@@ -30,6 +30,15 @@ npm start
   Sin datos (`npm run resetear-clave`) muestra la lista de usuarios. No crea usuarios nuevos
   (sólo el primero, si la base de datos está vacía).
 
+### Usuario de la API
+
+La API (`deploy/API.md`) se usa con un usuario propio, que no puede entrar al panel.
+Para crearlo o cambiarle la contraseña (muestra la contraseña en pantalla):
+
+```bash
+npm run usuario-api -- integracion
+```
+
 ### Reportes
 
 Pestaña **Reportes**: total vendido (sólo pedidos **entregados**, en la fecha de entrega), ticket promedio,

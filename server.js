@@ -554,7 +554,7 @@ function getCookie(req, name) {
 function requireAdmin(req, res, next) {
   const token = getCookie(req, 'admin_token');
   const session = token && sessions.get(token);
-  const found = session && session.exp > Date.now() && db.prepare('SELECT id, username, session_version FROM users WHERE id = ?').get(session.userId);
+  const found = session && session.exp > Date.now() && db.prepare("SELECT id, username, session_version FROM users WHERE id = ? AND role = 'panel'").get(session.userId);
   // Si la contraseña se reseteó desde la terminal, las sesiones anteriores dejan de servir
   const user = found && found.session_version === session.version ? found : null;
   if (!user) {
@@ -733,7 +733,8 @@ app.post('/api/admin/login', (req, res) => {
     throw httpError(429, `Demasiados intentos fallidos. Probá de nuevo en ${min} minuto${min === 1 ? '' : 's'}.`);
   }
   const username = str(req.body?.username);
-  const user = username && db.prepare('SELECT id, password_hash, session_version FROM users WHERE username = ?').get(username);
+  // Sólo los usuarios del panel (el usuario de la API no puede entrar a /admin)
+  const user = username && db.prepare("SELECT id, password_hash, session_version FROM users WHERE username = ? AND role = 'panel'").get(username);
   if (!user || !verifyPassword(String(req.body?.password ?? ''), user.password_hash)) {
     const prev = fails && fails.until === 0 ? fails.count : 0; // si ya cumplió el bloqueo, empieza de cero
     const count = prev + 1;
@@ -1171,55 +1172,78 @@ app.put('/api/admin/password', (req, res) => {
   res.json({ ok: true });
 });
 
-/* ------------------------------ clave de la API (desde el panel) ------------------------------ */
-// Se guarda sólo el "hash" de la clave: la clave completa se muestra una única vez al generarla.
-
-const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
-
-app.get('/api/admin/api-key', (req, res) => {
-  const s = getSettings();
-  res.json({ active: !!s.api_key_hash, created_at: s.api_key_created || '', hint: s.api_key_hint || '' });
-});
-
-app.post('/api/admin/api-key', (req, res) => {
-  const key = `th_${crypto.randomBytes(24).toString('base64url')}`;
-  setSetting('api_key_hash', sha256(key));
-  setSetting('api_key_hint', key.slice(-4));
-  setSetting('api_key_created', new Date().toLocaleString('es-PY'));
-  res.json({ key }); // única vez que se ve
-});
-
-app.delete('/api/admin/api-key', (req, res) => {
-  db.prepare("DELETE FROM settings WHERE key IN ('api_key_hash', 'api_key_hint', 'api_key_created')").run();
-  res.json({ ok: true });
-});
-
 /* ------------------------------ API v1 (para sistemas externos) ------------------------------ */
-// Autenticación: cabecera  Authorization: Bearer <clave>   (o  X-API-Key: <clave>)
+// Paso 1: POST /api/v1/login con el usuario de la API -> devuelve un token que dura 24 horas.
+// Paso 2: cada llamada lleva la cabecera  Authorization: Bearer <token>
+// El usuario de la API se crea en la terminal: npm run usuario-api -- <usuario>
 // Documentación: deploy/API.md
 
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const TOKEN_MS = 24 * 60 * 60 * 1000;
 const apiCalls = new Map(); // ip -> [momentos]  (límite: 120 llamadas por minuto)
 
-function requireApiKey(req, res, next) {
+function apiRateLimit(req, res, next) {
   const ip = req.ip || '';
   const now = Date.now();
   const recent = (apiCalls.get(ip) || []).filter((t) => now - t < 60000);
   if (recent.length >= 120) return res.status(429).json({ error: 'Demasiadas llamadas: máximo 120 por minuto.' });
   apiCalls.set(ip, [...recent, now]);
-
-  const stored = getSettings().api_key_hash;
-  if (!stored) return res.status(503).json({ error: 'La API está desactivada. Generá una clave en el panel: Configuración → API.' });
-  const auth = req.get('authorization') || '';
-  const key = auth.startsWith('Bearer ') ? auth.slice(7).trim() : (req.get('x-api-key') || '').trim();
-  const a = Buffer.from(sha256(key), 'hex');
-  const b = Buffer.from(stored, 'hex');
-  if (!key || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    return res.status(401).json({ error: 'Clave de API inválida o faltante.' });
-  }
   next();
 }
 
-app.use('/api/v1', requireApiKey);
+app.use('/api/v1', apiRateLimit);
+
+// Iniciar sesión: { "usuario": "...", "contrasena": "..." }  ->  { "token": "...", "vence": "..." }
+app.post('/api/v1/login', (req, res) => {
+  const ip = req.ip || '';
+  const fails = failedLogins.get(ip);
+  if (fails && fails.until > Date.now()) {
+    const min = Math.ceil((fails.until - Date.now()) / 60000);
+    throw httpError(429, `Demasiados intentos fallidos. Probá de nuevo en ${min} minuto${min === 1 ? '' : 's'}.`);
+  }
+  const b = req.body || {};
+  const usuario = str(b.usuario);
+  const contrasena = String(b.contrasena ?? b['contraseña'] ?? '');
+  if (!usuario || !contrasena) throw httpError(400, 'Mandá "usuario" y "contrasena".');
+  const user = db.prepare("SELECT id, password_hash, session_version FROM users WHERE username = ? AND role = 'api'").get(usuario);
+  if (!user || !verifyPassword(contrasena, user.password_hash)) {
+    const prev = fails && fails.until === 0 ? fails.count : 0;
+    const count = prev + 1;
+    failedLogins.set(ip, { count: count >= MAX_FAILS ? 0 : count, until: count >= MAX_FAILS ? Date.now() + LOCK_MS : 0 });
+    throw httpError(401, 'Usuario o contraseña incorrectos.');
+  }
+  failedLogins.delete(ip);
+  const now = Date.now();
+  db.prepare('DELETE FROM api_tokens WHERE expires_at < ?').run(now); // limpiar tokens vencidos
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('INSERT INTO api_tokens (token_hash, user_id, session_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    sha256(token),
+    user.id,
+    user.session_version,
+    now + TOKEN_MS,
+    now
+  );
+  const vence = new Date(now + TOKEN_MS);
+  res.json({ token, vence: `${ymd(vence)} ${pad(vence.getHours())}:${pad(vence.getMinutes())}`, dura_horas: 24 });
+});
+
+// Todas las demás rutas de la API necesitan un token válido
+app.use('/api/v1', (req, res, next) => {
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!token) return res.status(401).json({ error: 'Falta el token. Primero iniciá sesión en POST /api/v1/login.' });
+  const row = db
+    .prepare(
+      `SELECT t.expires_at, t.session_version AS tv, u.session_version AS uv
+       FROM api_tokens t JOIN users u ON u.id = t.user_id AND u.role = 'api' WHERE t.token_hash = ?`
+    )
+    .get(sha256(token));
+  // Si se cambió la contraseña del usuario de la API, sus tokens dejan de servir
+  if (!row || row.tv !== row.uv) return res.status(401).json({ error: 'Token inválido. Iniciá sesión de nuevo en POST /api/v1/login.' });
+  if (row.expires_at < Date.now()) return res.status(401).json({ error: 'El token venció. Iniciá sesión de nuevo en POST /api/v1/login.' });
+  next();
+});
+
 
 function apiOrder(o) {
   const items = db.prepare('SELECT product_id, product_name, quantity, unit_price FROM order_items WHERE order_id = ?').all(o.id);

@@ -106,7 +106,6 @@ document.addEventListener('click', (e) => {
   if (currentTab === 'settings') {
     loadSettings();
     loadDelivery();
-    loadApiKey();
   }
 });
 
@@ -533,56 +532,6 @@ $('#passwordForm').addEventListener('submit', async (e) => {
     });
     f.reset();
     toast('Contraseña cambiada');
-  } catch (err) {
-    toast(err.message, true);
-  }
-});
-
-/* ---------------- clave de la API ---------------- */
-
-async function loadApiKey() {
-  $('#apiBase').textContent = `${location.origin}/api/v1`;
-  try {
-    const k = await api('/api/admin/api-key');
-    $('#apiStatus').innerHTML = k.active
-      ? `<span class="ok">✓ API activa</span> · clave terminada en <code>…${esc(k.hint)}</code> · creada el ${esc(k.created_at)}`
-      : '<span class="warn">API desactivada: generá una clave para usarla.</span>';
-    $('#genApiKey').textContent = k.active ? 'Generar clave nueva' : 'Generar clave';
-    $('#delApiKey').hidden = !k.active;
-  } catch (err) {
-    if (!err.offline) toast(err.message, true);
-  }
-}
-
-$('#genApiKey').addEventListener('click', async () => {
-  const active = $('#genApiKey').textContent.includes('nueva');
-  if (active && !confirm('¿Generar una clave nueva?\n\nLa clave actual deja de funcionar en el momento: el sistema que la use va a necesitar la nueva.')) return;
-  try {
-    const { key } = await api('/api/admin/api-key', { method: 'POST' });
-    $('#apiKeyValue').textContent = key;
-    $('#apiKeyBox').hidden = false;
-    loadApiKey();
-  } catch (err) {
-    toast(err.message, true);
-  }
-});
-
-$('#copyApiKey').addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText($('#apiKeyValue').textContent);
-    toast('Clave copiada');
-  } catch {
-    toast('No se pudo copiar: seleccioná la clave y copiala a mano.', true);
-  }
-});
-
-$('#delApiKey').addEventListener('click', async () => {
-  if (!confirm('¿Desactivar la API?\n\nLa clave actual deja de funcionar y ningún sistema externo va a poder usar la API hasta que generes una nueva.')) return;
-  try {
-    await api('/api/admin/api-key', { method: 'DELETE' });
-    $('#apiKeyBox').hidden = true;
-    toast('API desactivada');
-    loadApiKey();
   } catch (err) {
     toast(err.message, true);
   }
