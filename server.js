@@ -37,7 +37,15 @@ app.use('/api', (req, res, next) => {
   if (restartNeeded) res.setHeader('X-Restart-Needed', '1');
   next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+// Las pantallas (html, js, css) se revisan siempre: así, después de una actualización,
+// el navegador no se queda con una versión vieja del panel o de la tienda.
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, file) => {
+      if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
 app.use('/uploads', express.static(UPLOADS));
 
 // Página de detalle de cada producto: /producto/5
