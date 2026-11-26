@@ -406,7 +406,7 @@ function renderOrders(orders) {
           <div>${o.delivery_type === 'envio' ? `Envío a: <strong>${esc(o.address)}</strong>${o.city ? ` · ${esc(o.city)}${o.city_other ? ' <span class="muted">(Otros)</span>' : ''}` : ''}` : 'Retira en el local'}</div>
           <div>Factura: ${o.invoice ? `<strong>Sí</strong> · Ruc/CI: <strong>${esc(o.ruc)}</strong>` : 'No'}</div>
           ${o.notes ? `<div>Aclaraciones: ${esc(o.notes)}</div>` : ''}
-          <div class="muted">Recibido: ${esc(o.created_at)}</div>
+          <div class="muted">Recibido: ${esc(o.created_at)} · Fuente: <strong>${esc(o.source || 'web')}</strong></div>
           <div>${o.stock_descontado ? '<span class="stock-flag on">Stock descontado</span>' : '<span class="stock-flag">Stock sin descontar</span>'}</div>
         </div>
         ${o.original_items ? '<div class="sold-label">Vendido (modificado por la API):</div>' : ''}

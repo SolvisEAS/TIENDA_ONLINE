@@ -135,6 +135,11 @@ if (!db.prepare('PRAGMA table_info(orders)').all().some((c) => c.name === 'origi
   db.exec('ALTER TABLE orders ADD COLUMN original_items TEXT');
 }
 
+// Fuente del pedido (texto libre: "web", "whatsapp", "local"...). Los que ya existen vinieron de la tienda web.
+if (!db.prepare('PRAGMA table_info(orders)').all().some((c) => c.name === 'source')) {
+  db.exec("ALTER TABLE orders ADD COLUMN source TEXT NOT NULL DEFAULT 'web'");
+}
+
 // Historial de cada cambio de stock: por pedidos, por la API o desde el panel
 db.exec(`
   CREATE TABLE IF NOT EXISTS stock_movements (

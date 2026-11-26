@@ -704,8 +704,8 @@ app.post('/api/orders', (req, res) => {
     const r = db
       .prepare(
         `INSERT INTO orders (customer_name, phone, delivery_type, address, notes, slot_date, slot_time,
-                             subtotal, delivery_fee, total, city, city_other, invoice, ruc)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                             subtotal, delivery_fee, total, city, city_other, invoice, ruc, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'web')`
       )
       .run(
         customer_name, phone, delivery_type, delivery_type === 'envio' ? address : '', notes, slot_date, slot_time,
@@ -1063,6 +1063,7 @@ app.get('/api/admin/reports/excel', async (req, res) => {
     'Pedidos',
     [
       { header: 'N°', key: 'id', width: 8 },
+      { header: 'Fuente', key: 'source', width: 12 },
       { header: 'Recibido', key: 'created', width: 18 },
       { header: 'Cliente', key: 'customer_name', width: 26 },
       { header: 'Teléfono', key: 'phone', width: 16 },
@@ -1258,6 +1259,7 @@ function apiOrder(o) {
   const history = db.prepare('SELECT status, note, username, changed_at FROM order_status_history WHERE order_id = ? ORDER BY id').all(o.id);
   return {
     id: o.id,
+    fuente: o.source || 'web',
     estado: o.status,
     stock_descontado: !!o.stock_descontado,
     creado: o.created_at,
@@ -1305,6 +1307,11 @@ app.get('/api/v1/pedidos', (req, res) => {
     where.push('status = ?');
     args.push(estado);
   }
+  const fuente = str(req.query.fuente);
+  if (fuente) {
+    where.push('source = ? COLLATE NOCASE');
+    args.push(fuente);
+  }
   if (DATE_RE.test(str(req.query.desde))) {
     where.push('date(created_at) >= ?');
     args.push(str(req.query.desde));
@@ -1332,12 +1339,16 @@ app.patch('/api/v1/pedidos/:id', (req, res) => {
   const b = req.body || {};
   const estado = str(b.estado);
   const hasItems = b.productos !== undefined;
-  if (!hasItems && !estado) throw httpError(400, 'Mandá "productos", "estado" o las dos cosas.');
+  const hasFuente = b.fuente !== undefined;
+  const fuente = str(b.fuente).slice(0, 60);
+  if (!hasItems && !estado && !hasFuente) throw httpError(400, 'Mandá "productos", "estado" o "fuente".');
+  if (hasFuente && !fuente) throw httpError(400, '"fuente" no puede estar vacía (ej: "web", "whatsapp", "local").');
   if (estado && !STATUSES.includes(estado)) throw httpError(400, `Estado no válido. Usá uno de estos: ${STATUSES.join(', ')}.`);
   const opts = { note: str(b.motivo).slice(0, 300), username: 'API', source: 'api' };
 
   const result = inTransaction(() => {
     if (!db.prepare('SELECT 1 FROM orders WHERE id = ?').get(id)) throw httpError(404, 'Pedido no encontrado.');
+    if (hasFuente) db.prepare('UPDATE orders SET source = ? WHERE id = ?').run(fuente, id);
     const items = hasItems ? applyItems(id, b.productos, opts) : { changed: false, stock: 'sin_cambios' };
     const status = estado ? applyStatus(id, estado, opts) : { changed: false, stock: 'sin_cambios' };
     return { items, status };
