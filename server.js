@@ -1332,6 +1332,76 @@ app.get('/api/v1/pedidos/:id', (req, res) => {
   res.json(apiOrder(o));
 });
 
+// Crear un pedido desde otro sistema (ventas del local, WhatsApp, etc.).
+// Si se crea como confirmado o entregado, la web descuenta el stock en el momento (o no crea nada si no alcanza).
+app.post('/api/v1/pedidos', (req, res) => {
+  const b = req.body || {};
+  const nombre = str(b.cliente?.nombre).slice(0, 120);
+  const telefono = str(b.cliente?.telefono).slice(0, 40);
+  if (!nombre || !telefono) throw httpError(400, 'Falta "cliente" con "nombre" y "telefono".');
+  if (!Array.isArray(b.productos) || !b.productos.length) throw httpError(400, 'Falta "productos": una lista con al menos un producto.');
+
+  const estado = str(b.estado) || 'pendiente';
+  if (!STATUSES.includes(estado)) throw httpError(400, `Estado no válido. Usá uno de estos: ${STATUSES.join(', ')}.`);
+  const fuente = str(b.fuente).slice(0, 60) || 'api';
+
+  // Entrega (opcional): retiro por defecto
+  const tipo = str(b.entrega?.tipo) === 'envio' ? 'envio' : 'retiro';
+  const ciudad = tipo === 'envio' ? str(b.entrega?.ciudad).slice(0, 80) : '';
+  const direccion = tipo === 'envio' ? str(b.entrega?.direccion).slice(0, 200) : '';
+  const now = new Date();
+  const dia = str(b.entrega?.dia) || ymd(now);
+  const hora = str(b.entrega?.hora) || `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  if (!DATE_RE.test(dia)) throw httpError(400, '"entrega.dia" debe tener el formato AAAA-MM-DD.');
+  if (!/^\d{2}:\d{2}$/.test(hora)) throw httpError(400, '"entrega.hora" debe tener el formato HH:MM.');
+  const delivery = b.delivery === undefined ? 0 : Number(b.delivery);
+  if (!Number.isFinite(delivery) || delivery < 0) throw httpError(400, '"delivery" debe ser un número mayor o igual a 0.');
+
+  // Factura (opcional)
+  const invoice = b.factura?.necesita === true ? 1 : 0;
+  const ruc = invoice ? str(b.factura?.ruc).replace(/[\s.]/g, '').toUpperCase() : '';
+  if (invoice && !/^\d{3,12}(-[0-9K])?$/.test(ruc)) throw httpError(400, '"factura.ruc" no es válido (sólo números, y si es RUC con su dígito: 80012345-6).');
+
+  // Productos: se suman los repetidos y van con el precio actual de la web
+  const wanted = new Map();
+  b.productos.forEach((it, i) => {
+    const pid = Number(it?.producto_id);
+    const qty = Number(it?.cantidad);
+    if (!Number.isInteger(pid) || pid < 1) throw httpError(400, `Producto ${i + 1}: "producto_id" no es válido.`);
+    if (!Number.isInteger(qty) || qty < 1) throw httpError(400, `Producto ${i + 1}: "cantidad" debe ser un número entero mayor que 0.`);
+    wanted.set(pid, (wanted.get(pid) || 0) + qty);
+  });
+  if (wanted.size > 100) throw httpError(400, 'Demasiados productos en un pedido (máximo 100).');
+
+  const opts = { note: str(b.motivo).slice(0, 300), username: 'API', source: 'api' };
+  const result = inTransaction(() => {
+    const items = [];
+    for (const [pid, qty] of wanted) {
+      const p = db.prepare('SELECT id, name, price FROM products WHERE id = ?').get(pid);
+      if (!p) throw httpError(400, `El producto ${pid} no existe.`);
+      items.push({ product_id: pid, product_name: p.name, quantity: qty, unit_price: p.price });
+    }
+    const subtotal = items.reduce((s, it) => s + it.quantity * it.unit_price, 0);
+    const r = db
+      .prepare(
+        `INSERT INTO orders (customer_name, phone, delivery_type, address, notes, slot_date, slot_time,
+                             subtotal, delivery_fee, total, city, invoice, ruc, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(nombre, telefono, tipo, direccion, str(b.notas).slice(0, 500), dia, hora, subtotal, delivery, subtotal + delivery, ciudad, invoice, ruc, fuente);
+    const id = Number(r.lastInsertRowid);
+    const ins = db.prepare('INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)');
+    for (const it of items) ins.run(id, it.product_id, it.product_name, it.quantity, it.unit_price);
+    db.prepare('UPDATE orders SET status_changed_at = created_at WHERE id = ?').run(id);
+    db.prepare("INSERT INTO order_status_history (order_id, status, note, username) VALUES (?, 'pendiente', ?, 'API')").run(id, `Pedido creado por la API (fuente: ${fuente})`);
+    // Si viene confirmado o entregado, se aplica la misma regla de stock de siempre
+    const status = estado !== 'pendiente' ? applyStatus(id, estado, opts) : { stock: 'sin_cambios' };
+    return { id, stock: status.stock };
+  });
+
+  res.status(201).json({ ok: true, id: result.id, stock: result.stock, pedido: apiOrder(db.prepare('SELECT * FROM orders WHERE id = ?').get(result.id)) });
+});
+
 // Modificar un pedido: productos reales, estado nuevo, o las dos cosas en la misma llamada.
 // Primero se aplican los productos y después el estado, todo junto (o nada).
 app.patch('/api/v1/pedidos/:id', (req, res) => {

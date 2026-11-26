@@ -38,6 +38,8 @@ curl "https://todoherramientas.solvis.com.py/api/v1/pedidos?estado=pendiente" \
   -H "Authorization: Bearer TU_TOKEN"
 ```
 
+Filtrar por fuente: `?fuente=web` (los de la tienda online), `?fuente=local`, etc.
+
 Respuesta: una lista de pedidos (cada uno igual al del punto 3).
 
 ---
@@ -65,7 +67,29 @@ El número del pedido es el mismo que llega por WhatsApp ("Nuevo pedido #25").
 
 ---
 
-## 4. Modificar un pedido
+## 4. Crear un pedido
+
+```bash
+curl -X POST https://todoherramientas.solvis.com.py/api/v1/pedidos \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"cliente": {"nombre": "Juan Pérez", "telefono": "0981123456"}, "productos": [{"producto_id": 36, "cantidad": 1}], "fuente": "local", "estado": "confirmado"}'
+```
+
+Respuesta:
+
+```json
+{ "ok": true, "id": 26, "stock": "descontado", "pedido": { ... } }
+```
+
+- `cliente` y `productos`: obligatorios. El precio es el de la web.
+- `fuente`: de dónde viene el pedido (texto libre). Si no se manda, queda `api`.
+- `estado`: si no se manda, queda `pendiente`. Si se crea `confirmado` o `entregado`, descuenta el stock en el momento; si no alcanza, el pedido **no se crea**.
+- Opcionales: `"entrega": {"tipo": "envio", "ciudad": "Asunción", "direccion": "...", "dia": "2026-12-01", "hora": "10:30"}`, `"delivery": 15000`, `"factura": {"necesita": true, "ruc": "80012345-6"}`, `"notas": "..."`.
+
+---
+
+## 5. Modificar un pedido
 
 Deja el pedido con lo que realmente se vendió y le cambia el estado.
 
@@ -85,6 +109,15 @@ curl -X PATCH https://todoherramientas.solvis.com.py/api/v1/pedidos/25 \
   -d '{"estado": "entregado"}'
 ```
 
+Cambiar la fuente:
+
+```bash
+curl -X PATCH https://todoherramientas.solvis.com.py/api/v1/pedidos/25 \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"fuente": "whatsapp"}'
+```
+
 Respuesta:
 
 ```json
@@ -99,7 +132,7 @@ al pasar a `cancelado` o `rechazado` lo devuelve. Siempre una sola vez.
 
 ---
 
-## 5. Ver stock
+## 6. Ver stock
 
 Todos los productos:
 
@@ -123,7 +156,7 @@ Respuesta:
 
 ---
 
-## 6. Cambiar el stock
+## 7. Cambiar el stock
 
 Para inventarios, mercadería que llega o roturas. **No usar para las ventas de los pedidos** (esas las descuenta la web sola).
 
@@ -153,7 +186,7 @@ Respuesta:
 
 ---
 
-## 7. Ver los cambios de stock
+## 8. Ver los cambios de stock
 
 ```bash
 curl "https://todoherramientas.solvis.com.py/api/v1/stock/movimientos?producto=36" \
