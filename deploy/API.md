@@ -132,7 +132,7 @@ al pasar a `cancelado` o `rechazado` lo devuelve. Siempre una sola vez.
 
 ---
 
-## 6. Ver stock
+## 6. Ver productos y stock
 
 Todos los productos:
 
@@ -151,12 +151,69 @@ curl https://todoherramientas.solvis.com.py/api/v1/productos/36 \
 Respuesta:
 
 ```json
-{ "id": 36, "nombre": "Taladro", "precio": 450000, "stock": 4 }
+{ "id": 36, "nombre": "Taladro", "categoria": "Eléctricas", "precio": 450000, "stock": 4,
+  "fotos": ["/uploads/1764-a1b2.jpg"] }
 ```
 
 ---
 
-## 7. Cambiar el stock
+## 7. Crear un producto
+
+```bash
+curl -X POST https://todoherramientas.solvis.com.py/api/v1/productos \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "Taladro 20V", "precio": 450000, "stock": 5, "categoria": "Eléctricas"}'
+```
+
+Respuesta:
+
+```json
+{ "ok": true, "producto": { "id": 52, "nombre": "Taladro 20V", "precio": 450000, "stock": 5, "fotos": [] } }
+```
+
+`nombre` y `precio` son obligatorios. `stock` (si no se manda: 0), `categoria` y `fotos` son opcionales.
+
+**Con fotos:** las fotos van en base64 dentro de `fotos` (hasta 8; la primera es la principal).
+Como el texto es largo, conviene armar el pedido en un archivo y mandarlo con `-d @archivo`:
+
+```bash
+echo "{\"nombre\": \"Taladro 20V\", \"precio\": 450000, \"fotos\": [\"$(base64 -w0 taladro.jpg)\"]}" > producto.json
+
+curl -X POST https://todoherramientas.solvis.com.py/api/v1/productos \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @producto.json
+```
+
+---
+
+## 8. Editar un producto
+
+Se manda sólo lo que cambia: `nombre`, `precio`, `stock`, `categoria` o `fotos`.
+
+```bash
+curl -X PATCH https://todoherramientas.solvis.com.py/api/v1/productos/36 \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "Taladro 20V Pro", "precio": 420000, "stock": 8}'
+```
+
+Respuesta:
+
+```json
+{ "ok": true, "cambios": ["nombre", "precio", "stock"], "producto": { ... } }
+```
+
+**Fotos:** la lista `fotos` reemplaza todas las fotos del producto.
+Para conservar una que ya tiene, se pone su dirección (la que aparece en "Ver productos"):
+`"fotos": ["/uploads/1764-a1b2.jpg", "FOTO_NUEVA_EN_BASE64"]`. Con `"fotos": []` se quitan todas.
+
+Cambiar el precio no cambia los pedidos que ya se hicieron.
+
+---
+
+## 9. Cambiar sólo el stock
 
 Para inventarios, mercadería que llega o roturas. **No usar para las ventas de los pedidos** (esas las descuenta la web sola).
 
@@ -186,7 +243,7 @@ Respuesta:
 
 ---
 
-## 8. Ver los cambios de stock
+## 10. Ver los cambios de stock
 
 ```bash
 curl "https://todoherramientas.solvis.com.py/api/v1/stock/movimientos?producto=36" \

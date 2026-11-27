@@ -1291,8 +1291,8 @@ function apiOrder(o) {
   };
 }
 
-function apiProduct(p) {
-  return { id: p.id, nombre: p.name, categoria: p.category || null, precio: p.price, stock: p.stock, visible: !!p.active };
+function apiProduct(p, fotos = imagesOf(p.id)) {
+  return { id: p.id, nombre: p.name, categoria: p.category || null, precio: p.price, stock: p.stock, visible: !!p.active, fotos };
 }
 
 const apiLimit = (v, def, max) => Math.min(Math.max(Number(v) || def, 1), max);
@@ -1437,13 +1437,110 @@ app.patch('/api/v1/pedidos/:id', (req, res) => {
 // Stock
 app.get('/api/v1/productos', (req, res) => {
   const soloVisibles = req.query.visibles === '1' || req.query.visibles === 'true';
-  res.json(db.prepare(`SELECT * FROM products ${soloVisibles ? 'WHERE active = 1' : ''} ORDER BY id`).all().map(apiProduct));
+  const rows = withImages(db.prepare(`SELECT * FROM products ${soloVisibles ? 'WHERE active = 1' : ''} ORDER BY id`).all());
+  res.json(rows.map((p) => apiProduct(p, p.images)));
 });
 
 app.get('/api/v1/productos/:id', (req, res) => {
   const p = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(req.params.id));
   if (!p) throw httpError(404, 'Producto no encontrado.');
   res.json(apiProduct(p));
+});
+
+// Fotos por la API: lista de textos, cada uno es
+//  - una foto nueva en base64 (con o sin "data:image/jpeg;base64," adelante), o
+//  - una foto que el producto ya tiene ("/uploads/xxx.jpg") para conservarla.
+// La lista reemplaza todas las fotos, en ese orden (la primera es la principal).
+function apiPhotoList(fotos) {
+  if (fotos === undefined) return undefined;
+  if (!Array.isArray(fotos)) throw httpError(400, '"fotos" debe ser una lista.');
+  if (fotos.length > MAX_IMAGES) throw httpError(400, `Se pueden cargar hasta ${MAX_IMAGES} fotos por producto.`);
+  return fotos.map((f, i) => {
+    const s = str(f);
+    if (s.startsWith('/uploads/')) return { url: s };
+    if (s.startsWith('data:')) {
+      if (!IMAGE_DATA_RE.test(s)) throw httpError(400, `Foto ${i + 1}: no es una imagen válida (jpg, png, webp o gif).`);
+      return { data: s };
+    }
+    // base64 sin el encabezado: se reconoce el tipo por los primeros bytes
+    const b64 = s.replace(/\s/g, '');
+    if (!/^[A-Za-z0-9+/]+=*$/.test(b64)) throw httpError(400, `Foto ${i + 1}: no es una imagen en base64 ni una foto del producto ("/uploads/...").`);
+    const head = Buffer.from(b64.slice(0, 24), 'base64');
+    const type =
+      head[0] === 0xff && head[1] === 0xd8 ? 'jpeg'
+      : head.subarray(0, 4).toString('latin1') === '\x89PNG' ? 'png'
+      : head.subarray(0, 3).toString('latin1') === 'GIF' ? 'gif'
+      : head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP' ? 'webp'
+      : null;
+    if (!type) throw httpError(400, `Foto ${i + 1}: no es una imagen válida (jpg, png, webp o gif).`);
+    return { data: `data:image/${type};base64,${b64}` };
+  });
+}
+
+function apiPrice(v) {
+  const n = Number(v);
+  if (v === null || v === '' || !Number.isFinite(n) || n < 0) throw httpError(400, '"precio" debe ser un número mayor o igual a 0.');
+  return n;
+}
+
+// Crear un producto: { "nombre", "precio", "stock", "categoria", "fotos" }
+app.post('/api/v1/productos', (req, res) => {
+  const b = req.body || {};
+  const nombre = str(b.nombre).slice(0, 200);
+  if (!nombre) throw httpError(400, 'Falta "nombre".');
+  if (b.precio === undefined) throw httpError(400, 'Falta "precio".');
+  const precio = apiPrice(b.precio);
+  const stock = b.stock === undefined ? 0 : Number(b.stock);
+  if (!Number.isInteger(stock) || stock < 0) throw httpError(400, '"stock" debe ser un número entero mayor o igual a 0.');
+  const categoria = str(b.categoria).slice(0, 80);
+  const fotos = apiPhotoList(b.fotos) || [];
+
+  const id = inTransaction(() => {
+    const r = db
+      .prepare('INSERT INTO products (name, description, price, compare_price, stock, category, featured, active) VALUES (?, ?, ?, 0, 0, ?, 0, 1)')
+      .run(nombre, '', precio, categoria);
+    const newId = Number(r.lastInsertRowid);
+    if (stock) setStock(newId, stock, 'api', { reason: 'Producto creado por la API', username: 'API' });
+    return newId;
+  });
+  saveProductImages(id, fotos);
+  res.status(201).json({ ok: true, producto: apiProduct(db.prepare('SELECT * FROM products WHERE id = ?').get(id)) });
+});
+
+// Editar un producto: se manda sólo lo que cambia (nombre, precio, stock, categoria, fotos)
+app.patch('/api/v1/productos/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const b = req.body || {};
+  const campos = ['nombre', 'precio', 'stock', 'categoria', 'fotos'].filter((k) => b[k] !== undefined);
+  if (!campos.length) throw httpError(400, 'Mandá al menos uno de estos datos: nombre, precio, stock, categoria, fotos.');
+  const nombre = b.nombre === undefined ? undefined : str(b.nombre).slice(0, 200);
+  if (nombre === '') throw httpError(400, '"nombre" no puede estar vacío.');
+  const precio = b.precio === undefined ? undefined : apiPrice(b.precio);
+  const stock = b.stock === undefined ? undefined : Number(b.stock);
+  if (stock !== undefined && (!Number.isInteger(stock) || stock < 0)) throw httpError(400, '"stock" debe ser un número entero mayor o igual a 0.');
+  const categoria = b.categoria === undefined ? undefined : str(b.categoria).slice(0, 80);
+  const fotos = apiPhotoList(b.fotos);
+
+  inTransaction(() => {
+    const p = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    if (!p) throw httpError(404, 'Producto no encontrado.');
+    if (fotos) {
+      const actuales = imagesOf(id);
+      const ajena = fotos.find((f) => f.url && !actuales.includes(f.url));
+      if (ajena) throw httpError(400, `La foto "${ajena.url}" no es de este producto.`);
+    }
+    const nuevoPrecio = precio ?? p.price;
+    db.prepare('UPDATE products SET name = ?, price = ?, compare_price = ?, category = ? WHERE id = ?').run(
+      nombre ?? p.name,
+      nuevoPrecio,
+      p.compare_price > nuevoPrecio ? p.compare_price : 0, // el "precio antes" sólo tiene sentido si es mayor
+      categoria ?? p.category,
+      id
+    );
+    if (stock !== undefined) setStock(id, stock, 'api', { reason: str(b.motivo).slice(0, 200) || 'Producto editado por la API', username: 'API' });
+  });
+  if (fotos) saveProductImages(id, fotos);
+  res.json({ ok: true, cambios: campos, producto: apiProduct(db.prepare('SELECT * FROM products WHERE id = ?').get(id)) });
 });
 
 // Modificar el stock directamente (opcional, para inventario, ingresos de mercadería, roturas, etc.).
